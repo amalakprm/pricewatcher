@@ -1,0 +1,13 @@
+{{define "components/metric-card"}}
+<div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow flex items-center justify-between">
+    <div class="space-y-1">
+        <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{{.Title}}</span>
+        <span class="text-2xl font-bold font-mono text-white block">{{.Value}}</span>
+    </div>
+    {{if .Icon}}
+        <div class="text-xl bg-slate-950/45 p-2 rounded-lg border border-slate-850">
+            {{.Icon}}
+        </div>
+    {{end}}
+</div>
+{{end}}

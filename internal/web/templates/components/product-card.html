@@ -1,0 +1,73 @@
+{{define "components/product-card"}}
+<div class="bg-slate-900 border border-slate-800 hover:border-slate-705 rounded-xl p-5 shadow flex flex-col justify-between transition cursor-pointer"
+     onclick="window.location.href='/product/{{.Base64URL}}'">
+    
+    <div>
+        <!-- Store and Activity Status Row -->
+        <div class="flex justify-between items-center mb-3">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-slate-950 border border-slate-850 text-slate-400">
+                {{if eq .Site "amazon"}}📦 Amazon{{else if eq .Site "flipkart"}}⚡ Flipkart{{else}}🌐 {{.Site}}{{end}}
+            </span>
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase font-mono
+                {{if .Active}}bg-emerald-500/10 text-emerald-400{{else}}bg-slate-800 text-slate-500{{end}}">
+                {{if .Active}}Active{{else}}Paused{{end}}
+            </span>
+        </div>
+
+        <!-- Product Title -->
+        <h3 class="text-sm font-bold text-white line-clamp-2 leading-snug hover:text-indigo-400 transition" title="{{.Title}}">
+            {{if .Title}}{{.Title}}{{else}}{{.ShortURL}}{{end}}
+        </h3>
+    </div>
+
+    <!-- Pricing and Difference stats -->
+    <div class="mt-4 pt-3 border-t border-slate-850 space-y-3.5">
+        <div class="flex justify-between items-end">
+            <div>
+                <span class="text-[9px] text-slate-500 uppercase block font-mono">Current Price</span>
+                <span class="text-base font-bold font-mono {{if .IsOnTarget}}text-emerald-400{{else}}text-slate-200{{end}}">
+                    {{if gt .CurrentPrice 0}}₹{{.CurrentPrice}}{{else}}N/A{{end}}
+                </span>
+            </div>
+            <div class="text-right">
+                <span class="text-[9px] text-slate-500 uppercase block font-mono">Target Price</span>
+                <span class="text-sm font-bold font-mono text-indigo-400">
+                    ₹{{.TargetPrice}}
+                </span>
+            </div>
+        </div>
+
+        <!-- Diff Calculation (calculated via simple Alpine data to avoid Go html/template limitations) -->
+        <div class="flex justify-between items-center text-[10px] font-mono" 
+             x-data="{ current: {{.CurrentPrice}}, target: {{.TargetPrice}} }">
+            <span class="text-slate-500">Difference:</span>
+            <span class="font-bold" 
+                  :class="current <= target ? 'text-emerald-400' : 'text-rose-400'"
+                  x-text="current > 0 ? (current <= target ? '₹' + Math.abs(current - target) + ' below' : '₹' + (current - target) + ' above') : 'N/A'">
+            </span>
+        </div>
+
+        <!-- Metadata footer -->
+        <div class="text-[9px] text-slate-500 font-mono flex justify-between items-center">
+            <span>Checked {{.TimeSinceLastScrape}}</span>
+        </div>
+
+        <!-- Control buttons -->
+        <div class="flex gap-1.5 justify-end pt-1" onclick="event.stopPropagation()">
+            <a href="/product/{{.Base64URL}}" 
+               class="px-2.5 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-slate-300 hover:text-white transition">
+                View
+            </a>
+            <button hx-post="/api/run?url={{.Base64URL}}"
+                    hx-swap="none"
+                    class="px-2.5 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-slate-300 hover:text-white transition">
+                Refresh
+            </button>
+            <a href="{{.URL}}" target="_blank" 
+               class="px-2.5 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-indigo-400 hover:text-indigo-300 transition">
+                Store
+            </a>
+        </div>
+    </div>
+</div>
+{{end}}

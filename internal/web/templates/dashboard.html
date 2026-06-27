@@ -1,0 +1,91 @@
+{{define "dashboard.html"}}
+{{template "header" .}}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-white tracking-tight">System Dashboard</h1>
+            <p class="text-xs text-slate-500 font-mono mt-1">Overview of price-monitoring agents and target thresholds</p>
+        </div>
+    </div>
+
+    <!-- Metrics Grid -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- 1. Total Products -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow flex items-center justify-between">
+            <div class="space-y-1">
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-mono">Total Products</span>
+                <span class="text-2xl font-bold font-mono text-white block">{{.Status.TotalProducts}}</span>
+            </div>
+            <div class="text-xl bg-slate-950/45 p-2 rounded-lg border border-slate-850">📦</div>
+        </div>
+
+        <!-- 2. Deals Found -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow flex items-center justify-between">
+            <div class="space-y-1">
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-mono">Deals Found</span>
+                <span class="text-2xl font-bold font-mono text-emerald-400 block">{{.Status.DealsFound}}</span>
+            </div>
+            <div class="text-xl bg-slate-950/45 p-2 rounded-lg border border-slate-850">🔥</div>
+        </div>
+
+        <!-- 3. Failed Scrapes -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow flex items-center justify-between">
+            <div class="space-y-1">
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-mono">Failed Scrapes</span>
+                <span class="text-2xl font-bold font-mono text-rose-500 block">{{.Status.FailedScrapes}}</span>
+            </div>
+            <div class="text-xl bg-slate-950/45 p-2 rounded-lg border border-slate-850">⚠️</div>
+        </div>
+
+        <!-- 4. Last Scrape Run -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow flex items-center justify-between">
+            <div class="space-y-1">
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-mono">Last Scrape Job</span>
+                <span class="text-sm font-semibold text-white block mt-1">
+                    {{if .LastRun}}
+                        Run #{{.LastRun.ID}} ({{.LastRun.Status}})
+                    {{else}}
+                        Never
+                    {{end}}
+                </span>
+            </div>
+            <div class="text-xl bg-slate-950/45 p-2 rounded-lg border border-slate-850">⚡</div>
+        </div>
+
+        <!-- 5. Next Scheduled Run -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow flex items-center justify-between">
+            <div class="space-y-1">
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-mono">Next Scheduled Run</span>
+                <span class="text-xs font-mono font-semibold text-indigo-400 block mt-1 truncate">{{.NextRun}}</span>
+            </div>
+            <div class="text-xl bg-slate-950/45 p-2 rounded-lg border border-slate-850">⏳</div>
+        </div>
+
+        <!-- 6. Scraper Scheduler status -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow flex items-center justify-between">
+            <div class="space-y-1">
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-mono">Scraper Engine State</span>
+                <span class="text-sm font-semibold text-slate-300 block mt-1">{{.Status.Status}}</span>
+            </div>
+            <div class="text-xl bg-slate-950/45 p-2 rounded-lg border border-slate-850">⚙️</div>
+        </div>
+    </div>
+
+    <!-- Watchlist Grid -->
+    <div class="space-y-4 pt-4 border-t border-slate-900">
+        <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider">Product Watchlist</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {{range .Products}}
+                {{template "components/product-card" .}}
+            {{else}}
+                <div class="col-span-full bg-slate-900 border border-slate-800 rounded-xl p-12 text-center text-slate-500">
+                    <span class="text-2xl block mb-2">📦</span>
+                    No products active on watchlist. Fill products in Settings sheet or check logs.
+                </div>
+            {{end}}
+        </div>
+    </div>
+</div>
+{{template "footer" .}}
+{{end}}

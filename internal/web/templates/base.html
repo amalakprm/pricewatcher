@@ -1,0 +1,80 @@
+{{define "header"}}
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PriceWatcher Console</title>
+    <!-- Local Compiled Tailwind CSS -->
+    <link rel="stylesheet" href="/static/css/tailwind.min.css">
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@2.0.0"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .htmx-indicator {
+            display: none;
+        }
+        .htmx-request .htmx-indicator {
+            display: inline-block;
+        }
+        .htmx-request.htmx-indicator {
+            display: inline-block;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased flex" x-data="{ mobileSidebarOpen: false }">
+
+    <!-- Desktop Sidebar Component -->
+    {{template "components/sidebar" .}}
+
+    <!-- Mobile Drawer Sidebar (Fallback menu) -->
+    <div x-show="mobileSidebarOpen" 
+         x-transition 
+         class="fixed inset-0 z-50 bg-slate-950/80 md:hidden"
+         style="display: none;">
+        <div @click.away="mobileSidebarOpen = false" class="h-full w-64 bg-slate-900 border-r border-slate-800 flex flex-col p-5 shadow-xl">
+            <div class="flex justify-between items-center pb-4 border-b border-slate-800 mb-6">
+                <span class="text-base font-bold text-white font-mono">PriceWatcher</span>
+                <button @click="mobileSidebarOpen = false" class="text-slate-400 hover:text-white text-lg">&times;</button>
+            </div>
+            <nav class="space-y-2">
+                <a href="/" class="block px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider text-slate-300 hover:bg-slate-800 hover:text-white">Dashboard</a>
+                <a href="/products" class="block px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider text-slate-300 hover:bg-slate-800 hover:text-white">Products</a>
+                <a href="/logs" class="block px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider text-slate-300 hover:bg-slate-800 hover:text-white">Logs</a>
+                <a href="/settings" class="block px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider text-slate-300 hover:bg-slate-800 hover:text-white">Settings</a>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Main Content Container -->
+    <div class="flex-grow flex flex-col md:pl-64 min-w-0">
+        
+        <!-- Header / Topbar component -->
+        {{template "components/topbar" .}}
+
+        <!-- Page View content -->
+        <main class="flex-grow p-6 space-y-6 max-w-6xl w-full mx-auto">
+{{end}}
+
+{{define "footer"}}
+        </main>
+
+        <footer class="border-t border-slate-900 py-4 text-center text-[10px] font-mono text-slate-600 px-6">
+            PriceWatcher Console &bull; Statically compiled backend
+        </footer>
+    </div>
+
+</body>
+</html>
+{{end}}

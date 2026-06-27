@@ -1,0 +1,8 @@
+{{define "components/status-badge"}}
+<div id="status-badge" hx-get="/api/status" hx-trigger="every 5s" hx-swap="outerHTML">
+    <!-- During initial template compile, we can show "Ready" by default, and HTMX will update immediately -->
+    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+        Ready
+    </span>
+</div>
+{{end}}

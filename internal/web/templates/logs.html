@@ -1,0 +1,91 @@
+{{define "logs.html"}}
+{{template "header" .}}
+<div class="space-y-6" x-data="{ 
+    searchQuery: '',
+    levelFilter: '',
+    matches(log) {
+        if (this.levelFilter && log.Level !== this.levelFilter) return false;
+        if (this.searchQuery && !log.Message.toLowerCase().includes(this.searchQuery.toLowerCase())) return false;
+        return true;
+    }
+}">
+    <!-- Header -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-white tracking-tight">System Logs</h1>
+            <p class="text-xs text-slate-500 font-mono mt-1">Review live scraper execution messages and runtime details</p>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-wrap gap-4 items-center justify-between shadow">
+        <div class="flex flex-wrap gap-3 items-center flex-grow">
+            <!-- Search field -->
+            <input type="search" 
+                   x-model="searchQuery"
+                   placeholder="Search messages..." 
+                   class="bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 hover:border-slate-700 transition w-full sm:w-64" />
+            
+            <!-- Level Selector -->
+            <select x-model="levelFilter" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none cursor-pointer">
+                <option value="">All Levels</option>
+                <option value="INFO">INFO Only</option>
+                <option value="WARN">WARN Only</option>
+                <option value="ERROR">ERROR Only</option>
+            </select>
+        </div>
+        <button onclick="location.reload()" class="px-3 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-xs font-semibold font-mono text-slate-300 hover:text-white transition">
+            Force Refresh
+        </button>
+    </div>
+
+    <!-- Inject Go structured view models into local JavaScript for quick client-side filtering -->
+    <script>
+        window.logsData = [
+            {{range .Logs}}
+            {
+                Time: "{{.Time}}",
+                Level: "{{.Level}}",
+                Message: "{{.Message}}"
+            },
+            {{end}}
+        ];
+    </script>
+
+    <!-- Table Container -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow">
+        <div class="overflow-x-auto max-h-[500px] overflow-y-auto">
+            <table class="min-w-full divide-y divide-slate-800 font-mono text-xs text-slate-300">
+                <thead class="bg-slate-950/60 text-slate-400 font-sans">
+                    <tr>
+                        <th class="px-5 py-3 text-left font-semibold uppercase tracking-wider text-[10px] w-48">Timestamp</th>
+                        <th class="px-5 py-3 text-center font-semibold uppercase tracking-wider text-[10px] w-24">Level</th>
+                        <th class="px-5 py-3 text-left font-semibold uppercase tracking-wider text-[10px]">Message</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-850 bg-slate-900/10">
+                    <template x-for="(log, index) in window.logsData" :key="index">
+                        <tr x-show="matches(log)" class="hover:bg-slate-800/20 transition">
+                            <td class="px-5 py-3 whitespace-nowrap text-slate-400" x-text="log.Time"></td>
+                            <td class="px-5 py-3 text-center whitespace-nowrap">
+                                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold"
+                                      :class="{
+                                          'bg-emerald-500/10 text-emerald-400': log.Level === 'INFO',
+                                          'bg-amber-500/10 text-amber-400': log.Level === 'WARN',
+                                          'bg-rose-500/10 text-rose-400': log.Level === 'ERROR'
+                                      }"
+                                      x-text="log.Level"></span>
+                            </td>
+                            <td class="px-5 py-3 font-sans text-slate-205 leading-normal" x-html="log.Message"></td>
+                        </tr>
+                    </template>
+                    <tr x-show="window.logsData.length === 0">
+                        <td colspan="3" class="px-5 py-8 text-center text-slate-500 font-sans">No log entries recorded.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{{template "footer" .}}
+{{end}}

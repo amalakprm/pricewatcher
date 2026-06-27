@@ -1,0 +1,86 @@
+{{define "settings.html"}}
+{{template "header" .}}
+<div class="space-y-6 max-w-3xl mx-auto" x-data="{
+    saving: false,
+    saveSettings() {
+        this.saving = true;
+        setTimeout(() => {
+            this.saving = false;
+            window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Settings saved! Restart the server to apply changes.', type: 'success' } }));
+        }, 800);
+    }
+}">
+    <!-- Header -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-white tracking-tight">System Settings</h1>
+            <p class="text-xs text-slate-500 font-mono mt-1">Configure database, sync schedulers, browser CDP, and alerts</p>
+        </div>
+        <button @click="saveSettings()" 
+                class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded text-xs font-semibold shadow transition">
+            Save Configurations
+        </button>
+    </div>
+
+    <!-- Forms Block -->
+    <div class="space-y-6">
+        
+        <!-- SECTION 1: FEED SETTINGS -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
+            <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
+                <span>📋</span> Feed Settings
+            </h3>
+            <div class="flex flex-col space-y-1">
+                <label class="text-[9px] text-slate-500 font-bold uppercase tracking-wider font-mono">Google Sheet Feed URL</label>
+                <input type="url" value="{{.Config.FeedURL}}" class="bg-slate-950 border border-slate-850 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition" />
+            </div>
+        </div>
+
+        <!-- SECTION 2: SCHEDULER SETTINGS -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
+            <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
+                <span>⏳</span> Scheduler Settings
+            </h3>
+            <div class="flex flex-col space-y-1">
+                <label class="text-[9px] text-slate-500 font-bold uppercase tracking-wider font-mono">Scraper Schedule Cron Pattern</label>
+                <input type="text" value="{{.Config.CronSchedule}}" class="bg-slate-950 border border-slate-850 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono" />
+            </div>
+        </div>
+
+        <!-- SECTION 3: BROWSER ENGINE SETTINGS -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
+            <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
+                <span>🌐</span> Browser Engine Settings
+            </h3>
+            <div class="flex flex-col space-y-1">
+                <label class="text-[9px] text-slate-500 font-bold uppercase tracking-wider font-mono">CloakBrowser CDP Remote Debug Endpoint</label>
+                <input type="url" value="{{.Config.BrowserEndpoint}}" class="bg-slate-950 border border-slate-850 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono" />
+            </div>
+        </div>
+
+        <!-- SECTION 4: NOTIFICATIONS -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
+            <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
+                <span>🔔</span> Notifications Setup
+            </h3>
+            <div class="flex flex-col space-y-1">
+                <label class="text-[9px] text-slate-500 font-bold uppercase tracking-wider font-mono">Apprise Notification Endpoint</label>
+                <input type="url" value="{{.Config.AlertCooldown}}" class="bg-slate-950 border border-slate-850 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono" />
+            </div>
+        </div>
+
+        <!-- SECTION 5: PERFORMANCE -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
+            <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
+                <span>🛠️</span> Performance Settings
+            </h3>
+            <div class="flex flex-col space-y-1">
+                <label class="text-[9px] text-slate-500 font-bold uppercase tracking-wider font-mono">Max Scrapers Workers</label>
+                <input type="number" value="{{.Config.WorkerCount}}" class="bg-slate-950 border border-slate-850 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono" />
+            </div>
+        </div>
+
+    </div>
+</div>
+{{template "footer" .}}
+{{end}}
