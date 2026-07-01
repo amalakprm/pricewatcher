@@ -206,7 +206,7 @@
 
 <script>
 function settingsApp() {
-    // IST offset: UTC+5:30
+    const _cfg = {{.ConfigJSON}};
     const IST_OFFSET_MINUTES = 330;
 
     function utcHourToIST(h) {
@@ -247,16 +247,16 @@ function settingsApp() {
         toast: { show: false, message: '', type: 'success' },
         validation: { apprise: null, cdp: null },
         cfg: {
-            feedURL: {{printf "%q" .Config.FeedURL}},
-            cronSchedule: {{printf "%q" .Config.CronSchedule}},
-            cdpEndpoint: {{printf "%q" .Config.BrowserEndpoint}},
-            appriseURL: {{printf "%q" .Config.AppriseURL}},
-            workerCount: {{.Config.WorkerCount}},
-            httpTimeout: {{.Config.HTTPTimeoutSec}},
-            cdpTimeout: {{.Config.CDPTimeoutSec}},
-            webPort: {{printf "%q" .Config.WebPort}},
-            dbPath: {{printf "%q" .Config.DBPath}},
-            alertCooldown: {{.Config.AlertCooldownHrs}}
+            feedURL: _cfg.feedURL || '',
+            cronSchedule: _cfg.cronSchedule || '0 3,12 * * *',
+            cdpEndpoint: _cfg.browserEndpoint || '',
+            appriseURL: _cfg.appriseURL || '',
+            workerCount: _cfg.workerCount ?? 5,
+            httpTimeout: _cfg.httpTimeoutSec ?? 15,
+            cdpTimeout: _cfg.cdpTimeoutSec ?? 30,
+            webPort: _cfg.webPort || ':8420',
+            dbPath: _cfg.dbPath || '',
+            alertCooldown: _cfg.alertCooldownHrs ?? 20
         },
         schedule: { mode: 'daily_times', times: ['03:30', '12:00'], everyN: 4, showRaw: false },
 
