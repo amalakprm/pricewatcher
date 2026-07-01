@@ -5,7 +5,7 @@
     <!-- Toast -->
     <div x-show="toast.show"
          x-transition
-         :class="toast.type === 'error' ? 'bg-rose-900 border-rose-700 text-rose-200' : 'bg-emerald-900 border-emerald-700 text-emerald-200'"
+         :class="toast.type === 'error' ? 'bg-rose-900 border-rose-700 text-rose-200' : toast.type === 'warning' ? 'bg-amber-900 border-amber-700 text-amber-200' : 'bg-emerald-900 border-emerald-700 text-emerald-200'"
          class="fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg border text-xs font-semibold shadow-xl max-w-xs"
          style="display:none">
         <span x-text="toast.message"></span>

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -575,6 +576,22 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
+	}
+
+	// Validate URL fields — only http:// and https:// are allowed to prevent SSRF.
+	for label, rawURL := range map[string]string{
+		"feedURL":         body.FeedURL,
+		"appriseURL":      body.AppriseURL,
+		"browserEndpoint": body.BrowserEndpoint,
+	} {
+		if rawURL == "" {
+			continue
+		}
+		parsed, err := url.Parse(rawURL)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			http.Error(w, fmt.Sprintf("invalid URL for %s: must be http or https", label), http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Validate cron schedule before applying anything.
