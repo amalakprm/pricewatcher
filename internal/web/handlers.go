@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +17,7 @@ import (
 	"pricewatcher/internal/notify"
 	"pricewatcher/internal/runner"
 	"pricewatcher/internal/scraper"
+	"pricewatcher/internal/urlutil"
 )
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
@@ -587,9 +587,8 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		if rawURL == "" {
 			continue
 		}
-		parsed, err := url.Parse(rawURL)
-		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-			http.Error(w, fmt.Sprintf("invalid URL for %s: must be http or https", label), http.StatusBadRequest)
+		if err := urlutil.ValidateHTTP(rawURL); err != nil {
+			http.Error(w, fmt.Sprintf("invalid URL for %s: %v", label, err), http.StatusBadRequest)
 			return
 		}
 	}
@@ -629,12 +628,15 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		s.cfg.CDPTimeout = time.Duration(body.CDPTimeoutSec) * time.Second
 	}
 
+	// cronRunTimeout is the maximum time a single cron-triggered scrape run is allowed to take.
+	const cronRunTimeout = 45 * time.Minute
+
 	// Reschedule cron if the schedule changed.
 	if body.CronSchedule != "" && body.CronSchedule != s.cfg.CronSchedule {
 		s.cronMu.Lock()
 		s.cron.Remove(s.cronEntryID)
 		newID, err := s.cron.AddFunc(body.CronSchedule, func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
+			ctx, cancel := context.WithTimeout(context.Background(), cronRunTimeout)
 			defer cancel()
 			_ = runner.RunOnce(ctx, s.db, s.cfg)
 		})

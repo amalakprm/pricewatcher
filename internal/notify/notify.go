@@ -8,11 +8,18 @@ import (
 	"mime/multipart"
 	"net/http"
 	"time"
+
+	"pricewatcher/internal/urlutil"
 )
 
 // SendNotification sends a price drop or scrape failure alert via the Apprise API.
 // It uses a 10s timeout and is non-blocking (does not abort the scraping loop on failure).
 func SendNotification(ctx context.Context, appriseURL, title, body string) {
+	if err := urlutil.ValidateHTTP(appriseURL); err != nil {
+		slog.Warn("Skipping notification: invalid Apprise URL", "error", err)
+		return
+	}
+
 	// Create context with 10s timeout
 	notifyCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()

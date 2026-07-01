@@ -13,7 +13,11 @@ import (
 	"pricewatcher/internal/feed"
 	"pricewatcher/internal/notify"
 	"pricewatcher/internal/scraper"
+	"pricewatcher/internal/urlutil"
 )
+
+// maxRunTimeout is the maximum time a single scrape cycle is allowed to run.
+const maxRunTimeout = 45 * time.Minute
 
 // RunOnce executes a single run cycle: fetch feed, scrape products, alert, and log.
 func RunOnce(ctx context.Context, database *db.DB, cfg *config.Config) error {
@@ -23,8 +27,10 @@ func RunOnce(ctx context.Context, database *db.DB, cfg *config.Config) error {
 	// 1. Check if CloakBrowser CDP is reachable
 	skipL3 := false
 	cdpClient := &http.Client{Timeout: 5 * time.Second}
-	respCdp, errCdp := cdpClient.Get(cfg.CloakBrowserCDP)
-	if errCdp != nil {
+	if err := urlutil.ValidateHTTP(cfg.CloakBrowserCDP); err != nil {
+		slog.Warn("CloakBrowser CDP URL invalid, skipping Layer 3 for this run", "error", err)
+		skipL3 = true
+	} else if respCdp, errCdp := cdpClient.Get(cfg.CloakBrowserCDP); errCdp != nil {
 		slog.Warn("CloakBrowser CDP unreachable, skipping Layer 3 for this run", "error", errCdp)
 		skipL3 = true
 	} else {

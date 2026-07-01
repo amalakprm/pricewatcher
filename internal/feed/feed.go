@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"pricewatcher/internal/urlutil"
 )
 
 type FeedItem struct {
@@ -14,6 +16,9 @@ type FeedItem struct {
 
 // FetchFeed downloads the product list feed from the Google Apps Script JSON endpoint.
 func FetchFeed(ctx context.Context, feedURL string, client *http.Client) ([]FeedItem, error) {
+	if err := urlutil.ValidateHTTP(feedURL); err != nil {
+		return nil, fmt.Errorf("feed URL validation failed: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, "GET", feedURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create feed request: %w", err)
