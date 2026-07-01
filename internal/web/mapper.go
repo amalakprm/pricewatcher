@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -243,6 +244,8 @@ func BuildSettingsPage(cfg *config.Config, srvDb *db.DB, scheduler *cron.Cron, r
 	configBytes := []byte("{}")
 	if encoded, err := json.Marshal(uiConfig); err == nil {
 		configBytes = encoded
+	} else {
+		slog.Error("Failed to marshal settings config for template", "error", err)
 	}
 
 	return SettingsPage{
