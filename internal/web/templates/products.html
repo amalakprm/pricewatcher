@@ -236,8 +236,9 @@
                         if (!resp.ok) { const t = await resp.text(); this.addError = t || 'Server error'; return; }
                         const data = await resp.json();
                         // Add to local array optimistically
+                        const safeB64 = (() => { try { return btoa(unescape(encodeURIComponent(this.addForm.url))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,''); } catch(e) { return ''; } })();
                         this.products.push({
-                            ID: data.id, URL: this.addForm.url, Base64URL: btoa(this.addForm.url).replace(/=/g,''),
+                            ID: data.id, URL: this.addForm.url, Base64URL: safeB64,
                             ShortURL: this.addForm.url.slice(0,30)+'...', Site: 'amazon',
                             Title: this.addForm.title || this.addForm.url.slice(0,40),
                             CustomTitle: this.addForm.title, Source: 'manual', Status: 'active',

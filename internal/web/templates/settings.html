@@ -173,6 +173,9 @@
 
 <script>
 function settingsApp() {
+    // Config is passed as JSON to prevent XSS from config string values
+    const _cfg = {{.ConfigJSON}};
+
     const IST_OFFSET = 5.5 * 60; // IST is UTC+5:30
 
     // Convert UTC hour/minute → IST time string "HH:MM"
@@ -222,12 +225,12 @@ function settingsApp() {
 
     return {
         form: {
-            feedURL: '{{.Config.FeedURL}}',
-            cronSchedule: '{{.Config.CronSchedule}}',
-            browserEndpoint: '{{.Config.BrowserEndpoint}}',
-            appriseURL: '{{.Config.AppriseURL}}',
-            alertCooldownHrs: {{.Config.AlertCooldownHrs}},
-            workerCount: {{.Config.WorkerCount}},
+            feedURL: _cfg.feedURL || '',
+            cronSchedule: _cfg.cronSchedule || '0 3,12 * * *',
+            browserEndpoint: _cfg.browserEndpoint || '',
+            appriseURL: _cfg.appriseURL || '',
+            alertCooldownHrs: _cfg.alertCooldownHrs || 20,
+            workerCount: _cfg.workerCount || 5,
         },
         schedMode: 'twice_daily',
         twiceDaily: { morning: '08:30', afternoon: '17:30' },

@@ -384,7 +384,9 @@ func (s *Server) handleAddProduct(w http.ResponseWriter, r *http.Request) {
 
 	// Set custom title if provided
 	if body.Title != "" {
-		_ = s.db.UpdateProduct(id, body.Title, body.TargetPrice, "active")
+		if err := s.db.UpdateProduct(id, body.Title, body.TargetPrice, "active"); err != nil {
+			slog.Error("Failed to set custom title on new product", "id", id, "error", err)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -591,7 +593,7 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	if body.BrowserEndpoint != "" {
 		s.cfg.CloakBrowserCDP = body.BrowserEndpoint
 	}
-	if body.AlertCooldownHrs > 0 {
+	if body.AlertCooldownHrs >= 0 {
 		s.cfg.AlertCooldownHrs = body.AlertCooldownHrs
 	}
 	if body.WorkerCount > 0 {

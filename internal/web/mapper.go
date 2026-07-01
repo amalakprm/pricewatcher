@@ -225,9 +225,20 @@ func BuildSettingsPage(cfg *config.Config, srvDb *db.DB, scheduler *cron.Cron, r
 		WorkerCount:      cfg.MaxHTTPConcurrent,
 	}
 
+	// JSON-encode config for safe embedding in JS (prevents XSS from config values)
+	configBytes, _ := json.Marshal(map[string]interface{}{
+		"feedURL":          uiConfig.FeedURL,
+		"cronSchedule":     uiConfig.CronSchedule,
+		"browserEndpoint":  uiConfig.BrowserEndpoint,
+		"appriseURL":       uiConfig.AppriseURL,
+		"alertCooldownHrs": uiConfig.AlertCooldownHrs,
+		"workerCount":      uiConfig.WorkerCount,
+	})
+
 	return SettingsPage{
-		BasePage: base,
-		Config:   uiConfig,
+		BasePage:   base,
+		Config:     uiConfig,
+		ConfigJSON: template.JS(configBytes),
 	}
 }
 

@@ -110,7 +110,8 @@ type LogEntry struct {
 // SettingsPage defines the context mapped to settings.html.
 type SettingsPage struct {
 	BasePage
-	Config UIConfig
+	Config     UIConfig
+	ConfigJSON template.JS // JSON-encoded config for safe JS injection
 }
 
 // UIConfig represents the fields exposed in the settings configuration form.
