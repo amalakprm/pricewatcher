@@ -240,14 +240,10 @@ func BuildSettingsPage(cfg *config.Config, srvDb *db.DB, scheduler *cron.Cron, r
 	}
 
 	// JSON-encode config for safe embedding in JS (prevents XSS from config values)
-	configBytes, _ := json.Marshal(map[string]interface{}{
-		"feedURL":          uiConfig.FeedURL,
-		"cronSchedule":     uiConfig.CronSchedule,
-		"browserEndpoint":  uiConfig.BrowserEndpoint,
-		"appriseURL":       uiConfig.AppriseURL,
-		"alertCooldownHrs": uiConfig.AlertCooldownHrs,
-		"workerCount":      uiConfig.WorkerCount,
-	})
+	configBytes := []byte("{}")
+	if encoded, err := json.Marshal(uiConfig); err == nil {
+		configBytes = encoded
+	}
 
 	return SettingsPage{
 		BasePage:   base,
