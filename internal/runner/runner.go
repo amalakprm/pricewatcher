@@ -62,7 +62,9 @@ func RunOnce(ctx context.Context, database *db.DB, cfg *config.Config) error {
 
 		slog.Info("Feed fetched successfully, syncing to DB", "count", len(feedItems))
 		syncedCount := 0
+		var feedURLs []string
 		for _, item := range feedItems {
+			feedURLs = append(feedURLs, item.URL)
 			_, dbErr := database.UpsertProduct(item.URL, item.Price, "feed")
 			if dbErr != nil {
 				slog.Error("Failed to upsert feed product in database", "url", item.URL, "error", dbErr)
@@ -71,6 +73,13 @@ func RunOnce(ctx context.Context, database *db.DB, cfg *config.Config) error {
 			}
 		}
 		slog.Info("Synced feed products to DB", "synced", syncedCount)
+
+		// Soft-delete feed products that are no longer in the sheet
+		if removedCount, rmErr := database.MarkRemovedFeedProducts(feedURLs); rmErr != nil {
+			slog.Error("Failed to mark removed feed products", "error", rmErr)
+		} else if removedCount > 0 {
+			slog.Info("Marked feed products as removed (not in latest feed)", "count", removedCount)
+		}
 	}
 
 	// 3. Get products to scrape from DB

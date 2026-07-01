@@ -137,6 +137,7 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/products", s.handleAddProduct)
 	mux.HandleFunc("DELETE /api/products/{id}", s.handleDeleteProduct)
 	mux.HandleFunc("PATCH /api/products/{id}", s.handleUpdateProductTarget)
+	mux.HandleFunc("PUT /api/products/{id}", s.handleUpdateProduct)
 	mux.HandleFunc("POST /api/products/{id}/toggle", s.handleToggleProductActive)
 	mux.HandleFunc("POST /api/feed/sync", s.handleFeedSync)
 	mux.HandleFunc("GET /logs/run/{id}", s.handleRunDetailsPartial)

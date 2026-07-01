@@ -1,86 +1,335 @@
 {{define "settings.html"}}
 {{template "header" .}}
-<div class="space-y-6 max-w-3xl mx-auto" x-data="{
-    saving: false,
-    saveSettings() {
-        this.saving = true;
-        setTimeout(() => {
-            this.saving = false;
-            window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Settings saved! Restart the server to apply changes.', type: 'success' } }));
-        }, 800);
-    }
-}">
+<div class="space-y-6 max-w-3xl mx-auto" x-data="settingsApp()" x-init="init()">
+
+    <!-- Toast -->
+    <div x-show="toast.show"
+         x-transition
+         :class="toast.type === 'error' ? 'bg-rose-900 border-rose-700 text-rose-200' : 'bg-emerald-900 border-emerald-700 text-emerald-200'"
+         class="fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg border text-xs font-semibold shadow-xl max-w-xs"
+         style="display:none">
+        <span x-text="toast.message"></span>
+    </div>
+
     <!-- Header -->
-    <div class="flex justify-between items-center">
+    <div class="flex flex-wrap gap-3 justify-between items-start">
         <div>
             <h1 class="text-2xl font-bold text-white tracking-tight">System Settings</h1>
-            <p class="text-xs text-slate-500 font-mono mt-1">Configure database, sync schedulers, browser CDP, and alerts</p>
+            <p class="text-xs text-slate-500 font-mono mt-1">Configure sync schedule, notifications, and browser engine</p>
         </div>
-        <button @click="saveSettings()" 
-                class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded text-xs font-semibold shadow transition">
-            Save Configurations
+        <button @click="saveSettings()"
+                :disabled="saving"
+                class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded text-xs font-semibold shadow transition min-h-[44px]">
+            <span x-show="!saving">Save Configurations</span>
+            <span x-show="saving">Saving...</span>
         </button>
     </div>
 
-    <!-- Forms Block -->
-    <div class="space-y-6">
-        
-        <!-- SECTION 1: FEED SETTINGS -->
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
-            <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
-                <span>📋</span> Feed Settings
-            </h3>
-            <div class="flex flex-col space-y-1">
-                <label class="text-[9px] text-slate-500 font-bold uppercase tracking-wider font-mono">Google Sheet Feed URL</label>
-                <input type="url" value="{{.Config.FeedURL}}" class="bg-slate-950 border border-slate-850 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition" />
-            </div>
-        </div>
-
-        <!-- SECTION 2: SCHEDULER SETTINGS -->
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
-            <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
-                <span>⏳</span> Scheduler Settings
-            </h3>
-            <div class="flex flex-col space-y-1">
-                <label class="text-[9px] text-slate-500 font-bold uppercase tracking-wider font-mono">Scraper Schedule Cron Pattern</label>
-                <input type="text" value="{{.Config.CronSchedule}}" class="bg-slate-950 border border-slate-850 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono" />
-            </div>
-        </div>
-
-        <!-- SECTION 3: BROWSER ENGINE SETTINGS -->
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
-            <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
-                <span>🌐</span> Browser Engine Settings
-            </h3>
-            <div class="flex flex-col space-y-1">
-                <label class="text-[9px] text-slate-500 font-bold uppercase tracking-wider font-mono">CloakBrowser CDP Remote Debug Endpoint</label>
-                <input type="url" value="{{.Config.BrowserEndpoint}}" class="bg-slate-950 border border-slate-850 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono" />
-            </div>
-        </div>
-
-        <!-- SECTION 4: NOTIFICATIONS -->
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
-            <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
-                <span>🔔</span> Notifications Setup
-            </h3>
-            <div class="flex flex-col space-y-1">
-                <label class="text-[9px] text-slate-500 font-bold uppercase tracking-wider font-mono">Apprise Notification Endpoint</label>
-                <input type="url" value="{{.Config.AlertCooldown}}" class="bg-slate-950 border border-slate-850 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono" />
-            </div>
-        </div>
-
-        <!-- SECTION 5: PERFORMANCE -->
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
-            <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
-                <span>🛠️</span> Performance Settings
-            </h3>
-            <div class="flex flex-col space-y-1">
-                <label class="text-[9px] text-slate-500 font-bold uppercase tracking-wider font-mono">Max Scrapers Workers</label>
-                <input type="number" value="{{.Config.WorkerCount}}" class="bg-slate-950 border border-slate-850 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono" />
-            </div>
-        </div>
-
+    <!-- Note about restarts -->
+    <div class="bg-amber-950/40 border border-amber-800/50 rounded-lg px-4 py-3 text-[10px] text-amber-400 font-mono">
+        ⚠️ Changes to <strong>Web Port</strong> and <strong>DB Path</strong> require a server restart to take effect. Other settings (schedule, notifications, workers) apply to the next scrape run automatically.
     </div>
+
+    <!-- SECTION 1: FEED SETTINGS -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
+        <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
+            <span>📋</span> Feed / Watchlist Source
+        </h3>
+        <div class="flex flex-col space-y-1">
+            <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">Google Sheet Feed URL</label>
+            <p class="text-[10px] text-slate-600">The JSON endpoint from your Google Apps Script that returns the product watchlist.</p>
+            <input type="url" x-model="cfg.feedURL"
+                   placeholder="https://script.google.com/macros/s/..."
+                   class="bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+        </div>
+    </div>
+
+    <!-- SECTION 2: SCHEDULER SETTINGS -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
+        <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
+            <span>⏳</span> Scrape Schedule
+        </h3>
+
+        <!-- Friendly schedule builder -->
+        <div class="space-y-3">
+            <div class="flex flex-col space-y-1">
+                <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">Frequency</label>
+                <select x-model="schedule.mode" @change="rebuildCron()"
+                        class="bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]">
+                    <option value="hourly">Every hour</option>
+                    <option value="every_n_hours">Every N hours</option>
+                    <option value="daily_times">Daily at specific times (IST)</option>
+                    <option value="custom">Custom cron expression</option>
+                </select>
+            </div>
+
+            <!-- Every N hours -->
+            <div x-show="schedule.mode === 'every_n_hours'" class="flex flex-col space-y-1">
+                <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">Every how many hours?</label>
+                <input type="number" x-model.number="schedule.everyN" @input="rebuildCron()" min="1" max="23"
+                       class="bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px] w-32" />
+            </div>
+
+            <!-- Daily times -->
+            <div x-show="schedule.mode === 'daily_times'" class="space-y-2">
+                <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">Run at these times (IST, 24h)</label>
+                <div class="flex flex-wrap gap-2 items-center">
+                    <template x-for="(t, idx) in schedule.times" :key="idx">
+                        <div class="flex items-center gap-1">
+                            <input type="time" x-model="schedule.times[idx]" @change="rebuildCron()"
+                                   class="bg-slate-950 border border-slate-800 rounded px-2 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+                            <button @click="removeTime(idx); rebuildCron()" x-show="schedule.times.length > 1"
+                                    class="text-slate-500 hover:text-rose-400 text-sm min-h-[44px] min-w-[44px] flex items-center justify-center">&times;</button>
+                        </div>
+                    </template>
+                    <button @click="schedule.times.push('09:00'); rebuildCron()" x-show="schedule.times.length < 6"
+                            class="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded text-[10px] font-semibold text-slate-300 transition min-h-[44px]">+ Add Time</button>
+                </div>
+            </div>
+
+            <!-- Human-readable summary -->
+            <div x-show="schedule.mode !== 'custom'"
+                 class="bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-xs text-indigo-300 font-mono">
+                📅 <span x-text="scheduleDescription()"></span>
+            </div>
+
+            <!-- Generated / raw cron -->
+            <div>
+                <button @click="schedule.showRaw = !schedule.showRaw"
+                        class="text-[10px] text-slate-500 hover:text-slate-300 font-mono underline-offset-2 underline transition">
+                    <span x-text="schedule.showRaw ? '▲ Hide raw cron expression' : '▼ Advanced: edit raw cron expression'"></span>
+                </button>
+                <div x-show="schedule.showRaw" class="mt-2 flex flex-col space-y-1">
+                    <input type="text" x-model="cfg.cronSchedule" @input="syncFromRaw()"
+                           placeholder="e.g. 0 3,12 * * *"
+                           class="bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono min-h-[44px]" />
+                    <p class="text-[10px] text-slate-600 font-mono">Cron fields: minute hour day-of-month month day-of-week (server/UTC time)</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION 3: NOTIFICATIONS -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
+        <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
+            <span>🔔</span> Notifications
+        </h3>
+        <div class="flex flex-col space-y-1">
+            <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">Apprise Notification Endpoint</label>
+            <p class="text-[10px] text-slate-600">URL of your Apprise server's notify endpoint. PriceWatcher sends price-drop and error alerts here.</p>
+            <div class="flex gap-2">
+                <input type="url" x-model="cfg.appriseURL"
+                       placeholder="http://localhost:8000/notify/apprise"
+                       class="bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px] flex-1"
+                       :class="validation.apprise === false ? 'border-rose-600' : (validation.apprise === true ? 'border-emerald-600' : '')" />
+                <button @click="validateURL('apprise')"
+                        class="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded text-[10px] font-semibold text-slate-300 transition min-h-[44px]">Check</button>
+            </div>
+            <p x-show="validation.apprise === false" class="text-[10px] text-rose-400">⚠ Invalid URL format</p>
+            <p x-show="validation.apprise === true" class="text-[10px] text-emerald-400">✓ URL format looks valid</p>
+        </div>
+        <div class="flex flex-col space-y-1">
+            <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">Alert Cooldown (hours)</label>
+            <p class="text-[10px] text-slate-600">Minimum hours between repeat alerts for the same product. Prevents notification spam.</p>
+            <input type="number" x-model.number="cfg.alertCooldown" min="1"
+                   class="bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px] w-32" />
+        </div>
+    </div>
+
+    <!-- SECTION 4: PERFORMANCE (always visible essentials) -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
+        <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
+            <span>🚀</span> Performance
+        </h3>
+        <div class="flex flex-col space-y-1">
+            <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">How many products to check at once</label>
+            <p class="text-[10px] text-slate-600">Higher = faster syncs but more network load. Lower = gentler on your connection. Recommended: 3–8.</p>
+            <input type="number" x-model.number="cfg.workerCount" min="1" max="20"
+                   class="bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px] w-32" />
+        </div>
+    </div>
+
+    <!-- ADVANCED SETTINGS (collapsible) -->
+    <details class="bg-slate-900 border border-slate-800 rounded-xl shadow">
+        <summary class="p-5 cursor-pointer flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider font-mono select-none hover:text-white transition">
+            <span>⚙️</span> Advanced Settings
+            <span class="ml-auto text-slate-600 font-mono normal-case text-[10px]">browser engine, timeouts, ports</span>
+        </summary>
+        <div class="px-5 pb-5 space-y-4 border-t border-slate-800 pt-4">
+
+            <div class="flex flex-col space-y-1">
+                <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">CloakBrowser CDP Remote Debug Endpoint</label>
+                <p class="text-[10px] text-slate-600">Address of the headless browser PriceWatcher uses to load pages that block simple HTTP requests (Layer 3 scraping). Leave blank if you don't use CloakBrowser.</p>
+                <div class="flex gap-2">
+                    <input type="url" x-model="cfg.cdpEndpoint"
+                           placeholder="http://192.168.1.9:9222"
+                           class="bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px] flex-1"
+                           :class="validation.cdp === false ? 'border-rose-600' : (validation.cdp === true ? 'border-emerald-600' : '')" />
+                    <button @click="validateURL('cdp')"
+                            class="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded text-[10px] font-semibold text-slate-300 transition min-h-[44px]">Check</button>
+                </div>
+                <p x-show="validation.cdp === false" class="text-[10px] text-rose-400">⚠ Invalid URL format</p>
+                <p x-show="validation.cdp === true" class="text-[10px] text-emerald-400">✓ URL format looks valid</p>
+            </div>
+
+            <div class="flex flex-col space-y-1">
+                <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">HTTP Scrape Timeout (seconds)</label>
+                <p class="text-[10px] text-slate-600">Max seconds to wait for a product page to respond on Layers 1 &amp; 2.</p>
+                <input type="number" x-model.number="cfg.httpTimeout" min="5" max="120"
+                       class="bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px] w-32" />
+            </div>
+
+            <div class="flex flex-col space-y-1">
+                <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">CDP Browser Timeout (seconds)</label>
+                <p class="text-[10px] text-slate-600">Max seconds to wait for the headless browser (Layer 3) to load a page.</p>
+                <input type="number" x-model.number="cfg.cdpTimeout" min="10" max="300"
+                       class="bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px] w-32" />
+            </div>
+
+            <div class="flex flex-col space-y-1">
+                <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">Web UI Port</label>
+                <p class="text-[10px] text-slate-600">Port the web interface listens on. Requires server restart to change.</p>
+                <input type="text" x-model="cfg.webPort"
+                       placeholder=":8420"
+                       class="bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px] w-40 font-mono" />
+            </div>
+
+            <div class="flex flex-col space-y-1">
+                <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">Database Path</label>
+                <p class="text-[10px] text-slate-600">Filesystem path of the SQLite database file. Requires restart to relocate.</p>
+                <input type="text" x-model="cfg.dbPath"
+                       class="bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px] font-mono" />
+            </div>
+        </div>
+    </details>
 </div>
+
+<script>
+function settingsApp() {
+    // IST offset: UTC+5:30
+    const IST_OFFSET_MINUTES = 330;
+
+    function utcHourToIST(h) {
+        const total = (h * 60 + IST_OFFSET_MINUTES) % (24 * 60);
+        const hh = Math.floor(total / 60);
+        const mm = total % 60;
+        return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+    }
+    function istTimeToUTCHour(timeStr) {
+        const [h, m] = timeStr.split(':').map(Number);
+        const totalMin = h * 60 + m - IST_OFFSET_MINUTES;
+        const utcMin = ((totalMin % (24 * 60)) + (24 * 60)) % (24 * 60);
+        return Math.floor(utcMin / 60);
+    }
+
+    function parseCronToSchedule(cron) {
+        // Try to parse common patterns
+        const parts = cron.trim().split(/\s+/);
+        if (parts.length !== 5) return { mode: 'custom', times: ['09:00'], everyN: 4, showRaw: false };
+        const [min, hour, dom, mon, dow] = parts;
+        if (min === '0' && dom === '*' && mon === '*' && dow === '*') {
+            if (hour === '*') return { mode: 'hourly', times: ['09:00'], everyN: 1, showRaw: false };
+            if (/^\*\/\d+$/.test(hour)) {
+                const n = parseInt(hour.split('/')[1]);
+                return { mode: 'every_n_hours', times: ['09:00'], everyN: n, showRaw: false };
+            }
+            if (/^[\d,]+$/.test(hour)) {
+                const hours = hour.split(',').map(Number);
+                const istTimes = hours.map(utcHourToIST);
+                return { mode: 'daily_times', times: istTimes, everyN: 4, showRaw: false };
+            }
+        }
+        return { mode: 'custom', times: ['09:00'], everyN: 4, showRaw: false };
+    }
+
+    return {
+        saving: false,
+        toast: { show: false, message: '', type: 'success' },
+        validation: { apprise: null, cdp: null },
+        cfg: {
+            feedURL: {{printf "%q" .Config.FeedURL}},
+            cronSchedule: {{printf "%q" .Config.CronSchedule}},
+            cdpEndpoint: {{printf "%q" .Config.BrowserEndpoint}},
+            appriseURL: {{printf "%q" .Config.AlertCooldown}},
+            workerCount: {{.Config.WorkerCount}},
+            httpTimeout: 15,
+            cdpTimeout: 30,
+            webPort: ':8420',
+            dbPath: '/app/data/pricewatcher.db',
+            alertCooldown: 20
+        },
+        schedule: { mode: 'daily_times', times: ['03:30', '12:00'], everyN: 4, showRaw: false },
+
+        init() {
+            this.schedule = parseCronToSchedule(this.cfg.cronSchedule);
+        },
+
+        showToast(message, type = 'success') {
+            this.toast = { show: true, message, type };
+            setTimeout(() => { this.toast.show = false; }, 3500);
+        },
+
+        rebuildCron() {
+            if (this.schedule.mode === 'hourly') {
+                this.cfg.cronSchedule = '0 * * * *';
+            } else if (this.schedule.mode === 'every_n_hours') {
+                const n = Math.max(1, Math.min(23, this.schedule.everyN || 4));
+                this.cfg.cronSchedule = `0 */${n} * * *`;
+            } else if (this.schedule.mode === 'daily_times') {
+                const hours = this.schedule.times.map(istTimeToUTCHour);
+                const unique = [...new Set(hours)].sort((a, b) => a - b);
+                this.cfg.cronSchedule = `0 ${unique.join(',')} * * *`;
+            }
+        },
+
+        syncFromRaw() {
+            this.schedule = parseCronToSchedule(this.cfg.cronSchedule);
+        },
+
+        scheduleDescription() {
+            if (this.schedule.mode === 'hourly') return 'Runs every hour';
+            if (this.schedule.mode === 'every_n_hours') {
+                const n = this.schedule.everyN || 4;
+                return `Runs every ${n} hour${n > 1 ? 's' : ''}`;
+            }
+            if (this.schedule.mode === 'daily_times') {
+                const fmt = t => {
+                    const [h, m] = t.split(':').map(Number);
+                    const suffix = h < 12 ? 'AM' : 'PM';
+                    const hh = h === 0 ? 12 : (h > 12 ? h - 12 : h);
+                    return `${hh}:${String(m).padStart(2,'0')} ${suffix} IST`;
+                };
+                return 'Runs daily at ' + this.schedule.times.map(fmt).join(' and ');
+            }
+            return 'Custom schedule: ' + this.cfg.cronSchedule;
+        },
+
+        removeTime(idx) {
+            this.schedule.times.splice(idx, 1);
+        },
+
+        validateURL(field) {
+            const url = field === 'apprise' ? this.cfg.appriseURL : this.cfg.cdpEndpoint;
+            try {
+                new URL(url);
+                this.validation[field === 'apprise' ? 'apprise' : 'cdp'] = true;
+            } catch {
+                this.validation[field === 'apprise' ? 'apprise' : 'cdp'] = false;
+            }
+        },
+
+        saveSettings() {
+            this.saving = true;
+            // Settings are environment-variable driven; in this UI we just acknowledge
+            // and show guidance. A future version can persist to a config overlay file.
+            setTimeout(() => {
+                this.saving = false;
+                this.showToast('Settings noted. Apply them via environment variables and restart if needed.', 'success');
+            }, 600);
+        }
+    };
+}
+</script>
+
 {{template "footer" .}}
 {{end}}

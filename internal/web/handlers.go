@@ -363,6 +363,8 @@ func (s *Server) handleAddProduct(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		URL         string  `json:"url"`
 		TargetPrice float64 `json:"target_price"`
+		CustomTitle string  `json:"custom_title"`
+		Notes       string  `json:"notes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -374,7 +376,7 @@ func (s *Server) handleAddProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := s.db.UpsertProduct(body.URL, body.TargetPrice, "manual")
+	id, err := s.db.AddProduct(body.URL, body.TargetPrice, strings.TrimSpace(body.CustomTitle), strings.TrimSpace(body.Notes))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -386,6 +388,49 @@ func (s *Server) handleAddProduct(w http.ResponseWriter, r *http.Request) {
 		"id":           id,
 		"url":          body.URL,
 		"target_price": body.TargetPrice,
+		"custom_title": body.CustomTitle,
+		"notes":        body.Notes,
+	})
+}
+
+func (s *Server) handleUpdateProduct(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		TargetPrice float64 `json:"target_price"`
+		CustomTitle string  `json:"custom_title"`
+		Notes       string  `json:"notes"`
+		Status      string  `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if body.TargetPrice <= 0 {
+		http.Error(w, "invalid target price", http.StatusBadRequest)
+		return
+	}
+	if body.Status != "active" && body.Status != "paused" && body.Status != "removed" {
+		body.Status = "active"
+	}
+
+	if err := s.db.UpdateProduct(id, body.TargetPrice, strings.TrimSpace(body.CustomTitle), strings.TrimSpace(body.Notes), body.Status); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":           id,
+		"target_price": body.TargetPrice,
+		"custom_title": body.CustomTitle,
+		"notes":        body.Notes,
+		"status":       body.Status,
 	})
 }
 
@@ -473,16 +518,21 @@ func (s *Server) handleFeedSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	syncedCount := 0
+	var feedURLs []string
 	for _, item := range feedItems {
+		feedURLs = append(feedURLs, item.URL)
 		_, err := s.db.UpsertProduct(item.URL, item.Price, "feed")
 		if err == nil {
 			syncedCount++
 		}
 	}
 
+	removedCount, _ := s.db.MarkRemovedFeedProducts(feedURLs)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"synced": syncedCount,
+		"synced":  syncedCount,
+		"removed": removedCount,
 	})
 }
 

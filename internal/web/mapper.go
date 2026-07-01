@@ -182,14 +182,24 @@ func BuildProductPage(productURL string, srvDb *db.DB, cfg *config.Config, sched
 
 	historyJSON, _ := json.Marshal(chartPoints)
 
+	// Fall back to custom_title if no scraped title
+	displayTitle := title
+	if displayTitle == "" && product.CustomTitle != "" {
+		displayTitle = product.CustomTitle
+	}
+
 	details := ProductDetails{
 		ID:           product.ID,
 		URL:          productURL,
 		Base64URL:    base64.URLEncoding.EncodeToString([]byte(productURL)),
 		ShortURL:     shortURL,
-		Title:        title,
+		Title:        displayTitle,
 		CurrentPrice: currentPrice,
 		TargetPrice:  product.TargetPrice,
+		Status:       product.Status,
+		Source:       product.Source,
+		CustomTitle:  product.CustomTitle,
+		Notes:        product.Notes,
 		HistoryJSON:  template.JS(historyJSON),
 		History:      uiHistory,
 		Logs:         uiLogs,
@@ -256,6 +266,10 @@ func MapProductsToCards(srvDb *db.DB, dbProducts []db.Product) []ProductCard {
 			title = last.Title
 			scrapedAt = last.ScrapedAt
 		}
+		// Fall back to custom_title if scrape title is empty
+		if title == "" && p.CustomTitle != "" {
+			title = p.CustomTitle
+		}
 
 		shortURL := p.URL
 		if len(shortURL) > 30 {
@@ -278,6 +292,10 @@ func MapProductsToCards(srvDb *db.DB, dbProducts []db.Product) []ProductCard {
 			TargetPrice:         p.TargetPrice,
 			IsOnTarget:          currentPrice > 0 && currentPrice <= p.TargetPrice,
 			Active:              p.Active,
+			Status:              p.Status,
+			Source:              p.Source,
+			CustomTitle:         p.CustomTitle,
+			Notes:               p.Notes,
 			TimeSinceLastScrape: timeSince,
 			LayerUsed:           layerUsed,
 		})
