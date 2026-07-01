@@ -61,16 +61,18 @@ func RunOnce(ctx context.Context, database *db.DB, cfg *config.Config) error {
 		}
 
 		slog.Info("Feed fetched successfully, syncing to DB", "count", len(feedItems))
-		syncedCount := 0
-		for _, item := range feedItems {
-			_, dbErr := database.UpsertProduct(item.URL, item.Price, "feed")
-			if dbErr != nil {
-				slog.Error("Failed to upsert feed product in database", "url", item.URL, "error", dbErr)
-			} else {
-				syncedCount++
-			}
+
+		// Convert feed.FeedItem to db.FeedItem
+		dbFeedItems := make([]db.FeedItem, len(feedItems))
+		for i, item := range feedItems {
+			dbFeedItems[i] = db.FeedItem{URL: item.URL, Price: item.Price}
 		}
-		slog.Info("Synced feed products to DB", "synced", syncedCount)
+
+		syncedCount, removedCount, syncErr := database.SyncFeedProducts(dbFeedItems)
+		if syncErr != nil {
+			slog.Error("Feed sync encountered an error", "error", syncErr)
+		}
+		slog.Info("Synced feed products to DB", "synced", syncedCount, "removed", removedCount)
 	}
 
 	// 3. Get products to scrape from DB

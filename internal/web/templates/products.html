@@ -1,25 +1,110 @@
 {{define "products.html"}}
 {{template "header" .}}
-<div class="space-y-6" x-data="{ 
-    searchVal: '',
-    storeFilter: '',
-    statusFilter: '',
-    matches(product) {
-        const sMatch = !this.searchVal || product.Title.toLowerCase().includes(this.searchVal.toLowerCase()) || product.URL.toLowerCase().includes(this.searchVal.toLowerCase());
-        const storeMatch = !this.storeFilter || product.Site === this.storeFilter;
-        let statusMatch = true;
-        if (this.statusFilter === 'active') statusMatch = product.Active;
-        else if (this.statusFilter === 'paused') statusMatch = !product.Active;
-        else if (this.statusFilter === 'on_target') statusMatch = product.IsOnTarget;
-        else if (this.statusFilter === 'above_target') statusMatch = !product.IsOnTarget && product.CurrentPrice > 0;
-        
-        return sMatch && storeMatch && statusMatch;
-    }
-}">
+<div class="space-y-6" x-data="productsApp()" x-init="init()">
+
+    <!-- Toast Notification -->
+    <div x-show="toast.show" x-transition
+         :class="toast.type === 'error' ? 'bg-rose-900 border-rose-700 text-rose-200' : 'bg-emerald-900 border-emerald-700 text-emerald-200'"
+         class="fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl border shadow-lg text-sm font-semibold max-w-sm"
+         style="display:none">
+        <span x-text="toast.message"></span>
+    </div>
+
+    <!-- Add Product Modal -->
+    <div x-show="showAddModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4" style="display:none">
+        <div @click.away="showAddModal = false" class="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-base font-bold text-white">Add Product</h2>
+                <button @click="showAddModal = false" class="text-slate-400 hover:text-white text-xl leading-none">&times;</button>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-[10px] text-slate-500 font-bold uppercase tracking-wider font-mono block mb-1">Product URL *</label>
+                    <input x-model="addForm.url" type="url" placeholder="https://amazon.in/dp/..." 
+                           class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+                </div>
+                <div>
+                    <label class="text-[10px] text-slate-500 font-bold uppercase tracking-wider font-mono block mb-1">Target Price (₹) *</label>
+                    <input x-model.number="addForm.targetPrice" type="number" step="0.01" placeholder="e.g. 4999" 
+                           class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+                </div>
+                <div>
+                    <label class="text-[10px] text-slate-500 font-bold uppercase tracking-wider font-mono block mb-1">Custom Title (optional)</label>
+                    <input x-model="addForm.title" type="text" placeholder="e.g. Sony WH-1000XM5" 
+                           class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+                </div>
+                <div x-show="addError" class="text-rose-400 text-xs px-1" x-text="addError"></div>
+            </div>
+            <div class="flex gap-2 justify-end pt-1">
+                <button @click="showAddModal = false" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-semibold text-slate-300 transition min-h-[44px]">Cancel</button>
+                <button @click="submitAdd()" :disabled="addLoading" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg text-xs font-semibold text-white transition min-h-[44px]">
+                    <span x-text="addLoading ? 'Adding…' : 'Add Product'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Product Modal -->
+    <div x-show="showEditModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4" style="display:none">
+        <div @click.away="showEditModal = false" class="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-base font-bold text-white">Edit Product</h2>
+                <button @click="showEditModal = false" class="text-slate-400 hover:text-white text-xl leading-none">&times;</button>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-[10px] text-slate-500 font-bold uppercase tracking-wider font-mono block mb-1">Custom Title</label>
+                    <input x-model="editForm.title" type="text" placeholder="Leave blank to use scraped title"
+                           class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+                </div>
+                <div>
+                    <label class="text-[10px] text-slate-500 font-bold uppercase tracking-wider font-mono block mb-1">Target Price (₹) *</label>
+                    <input x-model.number="editForm.targetPrice" type="number" step="0.01"
+                           class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+                </div>
+                <div>
+                    <label class="text-[10px] text-slate-500 font-bold uppercase tracking-wider font-mono block mb-1">Status</label>
+                    <select x-model="editForm.status" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-xs text-slate-300 focus:outline-none cursor-pointer min-h-[44px]">
+                        <option value="active">Active (scraping enabled)</option>
+                        <option value="paused">Paused (skip scraping)</option>
+                        <option value="removed">Removed (hide from active)</option>
+                    </select>
+                </div>
+                <div x-show="editError" class="text-rose-400 text-xs px-1" x-text="editError"></div>
+            </div>
+            <div class="flex gap-2 justify-end pt-1">
+                <button @click="showEditModal = false" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-semibold text-slate-300 transition min-h-[44px]">Cancel</button>
+                <button @click="submitEdit()" :disabled="editLoading" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg text-xs font-semibold text-white transition min-h-[44px]">
+                    <span x-text="editLoading ? 'Saving…' : 'Save Changes'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div x-show="showDeleteModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4" style="display:none">
+        <div @click.away="showDeleteModal = false" class="bg-slate-900 border border-rose-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-4">
+            <h2 class="text-base font-bold text-white">Delete Product?</h2>
+            <p class="text-xs text-slate-400">This will permanently delete the product and all its price history. This action cannot be undone.</p>
+            <div class="flex gap-2 justify-end pt-1">
+                <button @click="showDeleteModal = false" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-semibold text-slate-300 transition min-h-[44px]">Cancel</button>
+                <button @click="confirmDelete()" :disabled="deleteLoading" class="px-4 py-2.5 bg-rose-700 hover:bg-rose-600 disabled:opacity-50 rounded-lg text-xs font-semibold text-white transition min-h-[44px]">
+                    <span x-text="deleteLoading ? 'Deleting…' : 'Delete'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Header -->
-    <div>
-        <h1 class="text-2xl font-bold text-white tracking-tight">Products List</h1>
-        <p class="text-xs text-slate-500 font-mono mt-1">Manage and filter watchlist items</p>
+    <div class="flex justify-between items-center flex-wrap gap-3">
+        <div>
+            <h1 class="text-2xl font-bold text-white tracking-tight">Products List</h1>
+            <p class="text-xs text-slate-500 font-mono mt-1">Manage and filter watchlist items</p>
+        </div>
+        <button @click="showAddModal = true; addForm = {url:'', targetPrice:0, title:''}; addError=''"
+                class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-xs font-semibold text-white transition min-h-[44px] flex items-center gap-1.5">
+            <span>＋</span> Add Product
+        </button>
     </div>
 
     <!-- Filter Bar -->
@@ -29,22 +114,30 @@
             <input type="search" 
                    x-model="searchVal"
                    placeholder="Search title or url..." 
-                   class="bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 hover:border-slate-700 transition w-full sm:w-64" />
+                   class="bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 hover:border-slate-700 transition w-full sm:w-64 min-h-[44px]" />
             
             <!-- Store Selector -->
-            <select x-model="storeFilter" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none cursor-pointer">
+            <select x-model="storeFilter" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none cursor-pointer min-h-[44px]">
                 <option value="">All Stores</option>
                 <option value="amazon">Amazon</option>
                 <option value="flipkart">Flipkart</option>
             </select>
 
             <!-- Status Selector -->
-            <select x-model="statusFilter" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none cursor-pointer">
-                <option value="">All Statuses</option>
+            <select x-model="statusFilter" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none cursor-pointer min-h-[44px]">
+                <option value="">All (excl. removed)</option>
                 <option value="active">Active</option>
                 <option value="paused">Paused</option>
+                <option value="removed">Removed from feed</option>
                 <option value="on_target">On Target</option>
                 <option value="above_target">Above Target</option>
+            </select>
+
+            <!-- Source Selector -->
+            <select x-model="sourceFilter" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none cursor-pointer min-h-[44px]">
+                <option value="">All Sources</option>
+                <option value="feed">Google Sheet</option>
+                <option value="manual">Manually Added</option>
             </select>
         </div>
     </div>
@@ -60,6 +153,9 @@
                 ShortURL: "{{.ShortURL}}",
                 Site: "{{.Site}}",
                 Title: "{{if .Title}}{{.Title}}{{else}}{{.ShortURL}}{{end}}",
+                CustomTitle: "{{.CustomTitle}}",
+                Source: "{{.Source}}",
+                Status: "{{.Status}}",
                 CurrentPrice: {{.CurrentPrice}},
                 TargetPrice: {{.TargetPrice}},
                 IsOnTarget: {{.IsOnTarget}},
@@ -68,26 +164,161 @@
             },
             {{end}}
         ];
+
+        function productsApp() {
+            return {
+                products: window.productsData,
+                searchVal: '',
+                storeFilter: '',
+                statusFilter: '',
+                sourceFilter: '',
+                toast: { show: false, message: '', type: 'success' },
+                showAddModal: false,
+                showEditModal: false,
+                showDeleteModal: false,
+                addForm: { url: '', targetPrice: 0, title: '' },
+                editForm: { id: 0, title: '', targetPrice: 0, status: 'active' },
+                deleteTargetId: null,
+                addError: '',
+                editError: '',
+                addLoading: false,
+                editLoading: false,
+                deleteLoading: false,
+
+                init() {
+                    // Nothing to fetch on load
+                },
+
+                showToast(message, type = 'success') {
+                    this.toast = { show: true, message, type };
+                    setTimeout(() => { this.toast.show = false; }, 3500);
+                },
+
+                matches(product) {
+                    const sMatch = !this.searchVal || 
+                        product.Title.toLowerCase().includes(this.searchVal.toLowerCase()) || 
+                        product.URL.toLowerCase().includes(this.searchVal.toLowerCase());
+                    const storeMatch = !this.storeFilter || product.Site === this.storeFilter;
+                    const sourceMatch = !this.sourceFilter || product.Source === this.sourceFilter;
+                    
+                    let statusMatch = product.Status !== 'removed'; // hide removed by default
+                    if (this.statusFilter === 'active') statusMatch = product.Status === 'active';
+                    else if (this.statusFilter === 'paused') statusMatch = product.Status === 'paused';
+                    else if (this.statusFilter === 'removed') statusMatch = product.Status === 'removed';
+                    else if (this.statusFilter === 'on_target') statusMatch = product.IsOnTarget && product.Status !== 'removed';
+                    else if (this.statusFilter === 'above_target') statusMatch = !product.IsOnTarget && product.CurrentPrice > 0 && product.Status !== 'removed';
+                    
+                    return sMatch && storeMatch && sourceMatch && statusMatch;
+                },
+
+                openEdit(p) {
+                    this.editForm = { id: p.ID, title: p.CustomTitle || '', targetPrice: p.TargetPrice, status: p.Status };
+                    this.editError = '';
+                    this.showEditModal = true;
+                },
+
+                openDelete(id) {
+                    this.deleteTargetId = id;
+                    this.showDeleteModal = true;
+                },
+
+                async submitAdd() {
+                    this.addError = '';
+                    if (!this.addForm.url.trim()) { this.addError = 'URL is required'; return; }
+                    if (this.addForm.targetPrice <= 0) { this.addError = 'Target price must be positive'; return; }
+                    this.addLoading = true;
+                    try {
+                        const resp = await fetch('/api/products', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: this.addForm.url, target_price: this.addForm.targetPrice, title: this.addForm.title })
+                        });
+                        if (!resp.ok) { const t = await resp.text(); this.addError = t || 'Server error'; return; }
+                        const data = await resp.json();
+                        // Add to local array optimistically
+                        this.products.push({
+                            ID: data.id, URL: this.addForm.url, Base64URL: btoa(this.addForm.url).replace(/=/g,''),
+                            ShortURL: this.addForm.url.slice(0,30)+'...', Site: 'amazon',
+                            Title: this.addForm.title || this.addForm.url.slice(0,40),
+                            CustomTitle: this.addForm.title, Source: 'manual', Status: 'active',
+                            CurrentPrice: 0, TargetPrice: this.addForm.targetPrice, IsOnTarget: false, Active: true,
+                            TimeSinceLastScrape: 'never'
+                        });
+                        this.showAddModal = false;
+                        this.showToast('Product added successfully!');
+                    } catch(e) { this.addError = 'Network error: ' + e.message; }
+                    finally { this.addLoading = false; }
+                },
+
+                async submitEdit() {
+                    this.editError = '';
+                    if (this.editForm.targetPrice <= 0) { this.editError = 'Target price must be positive'; return; }
+                    this.editLoading = true;
+                    try {
+                        const resp = await fetch('/api/products/' + this.editForm.id, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ title: this.editForm.title, target_price: this.editForm.targetPrice, status: this.editForm.status })
+                        });
+                        if (!resp.ok) { const t = await resp.text(); this.editError = t || 'Server error'; return; }
+                        // Update local data
+                        const idx = this.products.findIndex(p => p.ID === this.editForm.id);
+                        if (idx !== -1) {
+                            this.products[idx].CustomTitle = this.editForm.title;
+                            this.products[idx].Title = this.editForm.title || this.products[idx].Title;
+                            this.products[idx].TargetPrice = this.editForm.targetPrice;
+                            this.products[idx].Status = this.editForm.status;
+                            this.products[idx].Active = this.editForm.status === 'active';
+                        }
+                        this.showEditModal = false;
+                        this.showToast('Product updated successfully!');
+                    } catch(e) { this.editError = 'Network error: ' + e.message; }
+                    finally { this.editLoading = false; }
+                },
+
+                async confirmDelete() {
+                    this.deleteLoading = true;
+                    try {
+                        const resp = await fetch('/api/products/' + this.deleteTargetId, { method: 'DELETE' });
+                        if (!resp.ok && resp.status !== 204) { this.showToast('Delete failed', 'error'); return; }
+                        this.products = this.products.filter(p => p.ID !== this.deleteTargetId);
+                        this.showDeleteModal = false;
+                        this.showToast('Product deleted.');
+                    } catch(e) { this.showToast('Network error', 'error'); }
+                    finally { this.deleteLoading = false; }
+                }
+            };
+        }
     </script>
 
     <!-- Grid View Pane -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <template x-for="p in window.productsData" :key="p.ID">
+        <template x-for="p in products" :key="p.ID">
             <div x-show="matches(p)" 
-                 class="bg-slate-900 border border-slate-805 hover:border-slate-700 rounded-xl p-5 shadow flex flex-col justify-between transition group relative cursor-pointer"
-                 @click="window.location.href='/product/' + p.Base64URL">
+                 class="bg-slate-900 border hover:border-slate-700 rounded-xl p-5 shadow flex flex-col justify-between transition group relative"
+                 :class="p.Status === 'removed' ? 'border-rose-900/40 opacity-60' : 'border-slate-805'">
                 
                 <div>
                     <!-- Badge Row -->
-                    <div class="flex justify-between items-center mb-3">
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-slate-950 border border-slate-850 text-slate-400" x-text="p.Site === 'amazon' ? '📦 Amazon' : p.Site === 'flipkart' ? '⚡ Flipkart' : '🌐 ' + p.Site"></span>
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase font-mono" 
-                              :class="p.Active ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-500'" 
-                              x-text="p.Active ? 'Active' : 'Paused'"></span>
+                    <div class="flex justify-between items-center mb-3 flex-wrap gap-1">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-slate-950 border border-slate-850 text-slate-400" 
+                              x-text="p.Site === 'amazon' ? '📦 Amazon' : p.Site === 'flipkart' ? '⚡ Flipkart' : '🌐 ' + p.Site"></span>
+                        <div class="flex items-center gap-1 flex-wrap">
+                            <!-- Source badge -->
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase font-mono"
+                                  :class="p.Source === 'manual' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'"
+                                  x-text="p.Source === 'manual' ? '✍ Manual' : '📋 Sheet'"></span>
+                            <!-- Status badge -->
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase font-mono"
+                                  :class="p.Status === 'active' ? 'bg-emerald-500/10 text-emerald-400' : p.Status === 'removed' ? 'bg-rose-500/10 text-rose-400' : 'bg-slate-800 text-slate-500'"
+                                  x-text="p.Status === 'removed' ? '🗑 Removed' : p.Status === 'active' ? 'Active' : 'Paused'"></span>
+                        </div>
                     </div>
 
                     <!-- Title -->
-                    <h3 class="text-sm font-bold text-white line-clamp-2 leading-snug group-hover:text-indigo-400 transition" x-text="p.Title"></h3>
+                    <h3 class="text-sm font-bold text-white line-clamp-2 leading-snug group-hover:text-indigo-400 transition cursor-pointer"
+                        x-text="p.Title"
+                        @click="window.location.href='/product/' + p.Base64URL"></h3>
                 </div>
 
                 <!-- Pricing Section -->
@@ -108,7 +339,7 @@
                         <span class="text-slate-500">Difference:</span>
                         <span class="font-bold" 
                               :class="p.CurrentPrice <= p.TargetPrice ? 'text-emerald-400' : 'text-rose-400'"
-                              x-text="p.CurrentPrice > 0 ? (p.CurrentPrice <= p.TargetPrice ? '₹' + Math.abs(p.CurrentPrice - p.TargetPrice) + ' below' : '₹' + (p.CurrentPrice - p.TargetPrice) + ' above') : 'N/A'">
+                              x-text="p.CurrentPrice > 0 ? (p.CurrentPrice <= p.TargetPrice ? '₹' + Math.abs(p.CurrentPrice - p.TargetPrice).toFixed(2) + ' below' : '₹' + (p.CurrentPrice - p.TargetPrice).toFixed(2) + ' above') : 'N/A'">
                         </span>
                     </div>
 
@@ -118,22 +349,35 @@
                     </div>
 
                     <!-- Quick buttons -->
-                    <div class="flex gap-1.5 justify-end pt-1" @click.stop="">
+                    <div class="flex gap-1.5 flex-wrap pt-1">
                         <a :href="'/product/' + p.Base64URL" 
-                           class="px-2.5 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-slate-300 hover:text-white transition">
+                           class="flex-1 text-center px-2.5 py-2 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-slate-300 hover:text-white transition min-h-[36px] flex items-center justify-center">
                             View
                         </a>
-                        <button hx-post="/api/run?url=" :hx-post="'/api/run?url=' + p.Base64URL"
+                        <button :hx-post="'/api/run?url=' + p.Base64URL"
                                 hx-swap="none"
-                                class="px-2.5 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-slate-300 hover:text-white transition">
+                                class="flex-1 px-2.5 py-2 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-slate-300 hover:text-white transition min-h-[36px]">
                             Refresh
                         </button>
                         <a :href="p.URL" target="_blank" 
-                           class="px-2.5 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-indigo-400 hover:text-indigo-300 transition">
+                           class="flex-1 text-center px-2.5 py-2 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-indigo-400 hover:text-indigo-300 transition min-h-[36px] flex items-center justify-center">
                             Store
                         </a>
+                        <button @click.stop="openEdit(p)"
+                                class="px-2.5 py-2 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-amber-400 hover:text-amber-300 transition min-h-[36px]"
+                                title="Edit">✏️</button>
+                        <button @click.stop="openDelete(p.ID)"
+                                class="px-2.5 py-2 bg-slate-950 hover:bg-rose-900 border border-slate-850 rounded text-[10px] font-semibold text-rose-400 hover:text-rose-300 transition min-h-[36px]"
+                                title="Delete">🗑</button>
                     </div>
                 </div>
+            </div>
+        </template>
+
+        <!-- Empty state -->
+        <template x-if="products.filter(matches).length === 0">
+            <div class="col-span-full bg-slate-900 border border-slate-800 rounded-xl p-12 text-center text-slate-500">
+                No products match the current filter.
             </div>
         </template>
     </div>

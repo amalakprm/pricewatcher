@@ -49,6 +49,9 @@ type ProductCard struct {
 	ShortURL            string
 	Site                string
 	Title               string
+	CustomTitle         string // product-level custom title override
+	Source              string // "feed" or "manual"
+	Status              string // "active", "paused", "removed"
 	CurrentPrice        float64
 	TargetPrice         float64
 	IsOnTarget          bool
@@ -110,11 +113,12 @@ type SettingsPage struct {
 	Config UIConfig
 }
 
-// UIConfig represents exactly the 5 fields exposed in settings configuration form.
+// UIConfig represents the fields exposed in the settings configuration form.
 type UIConfig struct {
-	FeedURL         string
-	CronSchedule    string
-	BrowserEndpoint string
-	AlertCooldown   string
-	WorkerCount     int
+	FeedURL          string
+	CronSchedule     string
+	BrowserEndpoint  string
+	AppriseURL       string
+	AlertCooldownHrs int
+	WorkerCount      int
 }

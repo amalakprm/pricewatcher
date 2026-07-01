@@ -363,12 +363,14 @@ func (s *Server) handleAddProduct(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		URL         string  `json:"url"`
 		TargetPrice float64 `json:"target_price"`
+		Title       string  `json:"title"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 	body.URL = strings.TrimSpace(body.URL)
+	body.Title = strings.TrimSpace(body.Title)
 	if body.URL == "" || body.TargetPrice <= 0 {
 		http.Error(w, "invalid url or target price", http.StatusBadRequest)
 		return
@@ -380,12 +382,18 @@ func (s *Server) handleAddProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set custom title if provided
+	if body.Title != "" {
+		_ = s.db.UpdateProduct(id, body.Title, body.TargetPrice, "active")
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"id":           id,
 		"url":          body.URL,
 		"target_price": body.TargetPrice,
+		"title":        body.Title,
 	})
 }
 
@@ -438,6 +446,53 @@ func (s *Server) handleUpdateProductTarget(w http.ResponseWriter, r *http.Reques
 	})
 }
 
+func (s *Server) handleUpdateProduct(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		Title       string  `json:"title"`
+		TargetPrice float64 `json:"target_price"`
+		Status      string  `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	body.Title = strings.TrimSpace(body.Title)
+	if body.TargetPrice <= 0 {
+		http.Error(w, "invalid target price", http.StatusBadRequest)
+		return
+	}
+
+	validStatuses := map[string]bool{"active": true, "paused": true, "removed": true}
+	if body.Status == "" {
+		body.Status = "active"
+	}
+	if !validStatuses[body.Status] {
+		http.Error(w, "invalid status (must be active, paused, or removed)", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.db.UpdateProduct(id, body.Title, body.TargetPrice, body.Status); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":           id,
+		"title":        body.Title,
+		"target_price": body.TargetPrice,
+		"status":       body.Status,
+	})
+}
+
 func (s *Server) handleToggleProductActive(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -472,17 +527,81 @@ func (s *Server) handleFeedSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	syncedCount := 0
-	for _, item := range feedItems {
-		_, err := s.db.UpsertProduct(item.URL, item.Price, "feed")
-		if err == nil {
-			syncedCount++
-		}
+	dbFeedItems := make([]db.FeedItem, len(feedItems))
+	for i, item := range feedItems {
+		dbFeedItems[i] = db.FeedItem{URL: item.URL, Price: item.Price}
+	}
+
+	syncedCount, removedCount, syncErr := s.db.SyncFeedProducts(dbFeedItems)
+	if syncErr != nil {
+		http.Error(w, fmt.Sprintf("sync error: %v", syncErr), http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"synced": syncedCount,
+		"synced":  syncedCount,
+		"removed": removedCount,
+	})
+}
+
+func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		FeedURL          string `json:"feed_url"`
+		CronSchedule     string `json:"cron_schedule"`
+		BrowserEndpoint  string `json:"browser_endpoint"`
+		AppriseURL       string `json:"apprise_url"`
+		AlertCooldownHrs int    `json:"alert_cooldown_hrs"`
+		WorkerCount      int    `json:"worker_count"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if body.WorkerCount < 1 {
+		body.WorkerCount = 1
+	}
+	if body.AlertCooldownHrs < 0 {
+		body.AlertCooldownHrs = 0
+	}
+
+	// Persist each setting to the DB
+	settings := map[string]string{
+		"feed_url":           body.FeedURL,
+		"cron_schedule":      body.CronSchedule,
+		"browser_endpoint":   body.BrowserEndpoint,
+		"apprise_url":        body.AppriseURL,
+		"alert_cooldown_hrs": strconv.Itoa(body.AlertCooldownHrs),
+		"worker_count":       strconv.Itoa(body.WorkerCount),
+	}
+	for k, v := range settings {
+		if err := s.db.SaveSetting(k, v); err != nil {
+			slog.Error("Failed to save setting", "key", k, "error", err)
+		}
+	}
+
+	// Apply live-updatable settings to in-memory config
+	if body.FeedURL != "" {
+		s.cfg.FeedURL = body.FeedURL
+	}
+	if body.AppriseURL != "" {
+		s.cfg.AppriseURL = body.AppriseURL
+	}
+	if body.BrowserEndpoint != "" {
+		s.cfg.CloakBrowserCDP = body.BrowserEndpoint
+	}
+	if body.AlertCooldownHrs > 0 {
+		s.cfg.AlertCooldownHrs = body.AlertCooldownHrs
+	}
+	if body.WorkerCount > 0 {
+		s.cfg.MaxHTTPConcurrent = body.WorkerCount
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"message": "Settings saved. Schedule and port changes take effect after restart.",
 	})
 }
 

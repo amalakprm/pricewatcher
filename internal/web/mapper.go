@@ -217,11 +217,12 @@ func BuildSettingsPage(cfg *config.Config, srvDb *db.DB, scheduler *cron.Cron, r
 	base := BuildBasePage("Settings", "settings", srvDb, cfg, scheduler, running)
 
 	uiConfig := UIConfig{
-		FeedURL:         cfg.FeedURL,
-		CronSchedule:    cfg.CronSchedule,
-		BrowserEndpoint: cfg.CloakBrowserCDP,
-		AlertCooldown:   cfg.AppriseURL,
-		WorkerCount:     cfg.MaxHTTPConcurrent,
+		FeedURL:          cfg.FeedURL,
+		CronSchedule:     cfg.CronSchedule,
+		BrowserEndpoint:  cfg.CloakBrowserCDP,
+		AppriseURL:       cfg.AppriseURL,
+		AlertCooldownHrs: cfg.AlertCooldownHrs,
+		WorkerCount:      cfg.MaxHTTPConcurrent,
 	}
 
 	return SettingsPage{
@@ -242,12 +243,7 @@ func MapProductsToCards(srvDb *db.DB, dbProducts []db.Product) []ProductCard {
 		var currentPrice float64
 		var layerUsed int
 		var title string
-		var prices []float64
 		var scrapedAt time.Time
-
-		for _, pt := range history {
-			prices = append(prices, pt.Price)
-		}
 
 		if len(history) > 0 {
 			last := history[len(history)-1]
@@ -273,11 +269,14 @@ func MapProductsToCards(srvDb *db.DB, dbProducts []db.Product) []ProductCard {
 			Base64URL:           base64.URLEncoding.EncodeToString([]byte(p.URL)),
 			ShortURL:            shortURL,
 			Site:                scraper.DetectSite(p.URL),
-			Title:               title,
+			Title:               displayTitle(p.Title, title, shortURL),
+			CustomTitle:         p.Title,
+			Source:              p.Source,
+			Status:              p.Status,
 			CurrentPrice:        currentPrice,
 			TargetPrice:         p.TargetPrice,
 			IsOnTarget:          currentPrice > 0 && currentPrice <= p.TargetPrice,
-			Active:              p.Active,
+			Active:              p.Status == "active",
 			TimeSinceLastScrape: timeSince,
 			LayerUsed:           layerUsed,
 		})
@@ -297,4 +296,16 @@ func formatTimeSince(t time.Time) string {
 		return fmt.Sprintf("%dh ago", int(diff.Hours()))
 	}
 	return fmt.Sprintf("%dd ago", int(diff.Hours()/24))
+}
+
+// displayTitle returns the best available title for display:
+// custom product title takes priority, then scraped title, then short URL.
+func displayTitle(customTitle, scrapedTitle, shortURL string) string {
+	if customTitle != "" {
+		return customTitle
+	}
+	if scrapedTitle != "" {
+		return scrapedTitle
+	}
+	return shortURL
 }

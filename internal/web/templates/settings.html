@@ -1,86 +1,328 @@
 {{define "settings.html"}}
 {{template "header" .}}
-<div class="space-y-6 max-w-3xl mx-auto" x-data="{
-    saving: false,
-    saveSettings() {
-        this.saving = true;
-        setTimeout(() => {
-            this.saving = false;
-            window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Settings saved! Restart the server to apply changes.', type: 'success' } }));
-        }, 800);
-    }
-}">
+<div class="space-y-6 max-w-3xl mx-auto" x-data="settingsApp()" x-init="init()">
+
+    <!-- Toast -->
+    <div x-show="toast.show" x-transition
+         :class="toast.type === 'error' ? 'bg-rose-900 border-rose-700 text-rose-200' : 'bg-emerald-900 border-emerald-700 text-emerald-200'"
+         class="fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl border shadow-lg text-sm font-semibold max-w-sm"
+         style="display:none">
+        <span x-text="toast.message"></span>
+    </div>
+
     <!-- Header -->
-    <div class="flex justify-between items-center">
+    <div class="flex justify-between items-center flex-wrap gap-3">
         <div>
             <h1 class="text-2xl font-bold text-white tracking-tight">System Settings</h1>
-            <p class="text-xs text-slate-500 font-mono mt-1">Configure database, sync schedulers, browser CDP, and alerts</p>
+            <p class="text-xs text-slate-500 font-mono mt-1">Configure sync schedule, notifications, and browser engine</p>
         </div>
-        <button @click="saveSettings()" 
-                class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded text-xs font-semibold shadow transition">
-            Save Configurations
+        <button @click="saveSettings()" :disabled="saving"
+                class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow transition min-h-[44px]">
+            <span x-text="saving ? 'Saving…' : 'Save Settings'"></span>
         </button>
     </div>
 
     <!-- Forms Block -->
     <div class="space-y-6">
-        
+
         <!-- SECTION 1: FEED SETTINGS -->
         <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
             <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
                 <span>📋</span> Feed Settings
             </h3>
             <div class="flex flex-col space-y-1">
-                <label class="text-[9px] text-slate-500 font-bold uppercase tracking-wider font-mono">Google Sheet Feed URL</label>
-                <input type="url" value="{{.Config.FeedURL}}" class="bg-slate-950 border border-slate-850 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition" />
+                <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">Google Sheet Feed URL</label>
+                <p class="text-[10px] text-slate-500">The URL of your Google Apps Script JSON endpoint that returns the product watchlist.</p>
+                <input x-model="form.feedURL" type="url" placeholder="https://script.google.com/..."
+                       class="bg-slate-950 border border-slate-850 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
             </div>
         </div>
 
         <!-- SECTION 2: SCHEDULER SETTINGS -->
         <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
             <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
-                <span>⏳</span> Scheduler Settings
+                <span>⏰</span> Schedule Settings
             </h3>
-            <div class="flex flex-col space-y-1">
-                <label class="text-[9px] text-slate-500 font-bold uppercase tracking-wider font-mono">Scraper Schedule Cron Pattern</label>
-                <input type="text" value="{{.Config.CronSchedule}}" class="bg-slate-950 border border-slate-850 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono" />
+
+            <!-- Friendly builder -->
+            <div class="space-y-3">
+                <div>
+                    <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono block mb-1">Check Frequency</label>
+                    <p class="text-[10px] text-slate-500 mb-2">How often PriceWatcher should check product prices. Times shown in IST (UTC+5:30).</p>
+                    <select x-model="schedMode" @change="updateCronFromBuilder()"
+                            class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-xs text-slate-300 focus:outline-none cursor-pointer min-h-[44px]">
+                        <option value="twice_daily">Twice daily (morning &amp; afternoon)</option>
+                        <option value="once_daily">Once daily</option>
+                        <option value="every_n_hours">Every N hours</option>
+                        <option value="hourly">Every hour</option>
+                        <option value="custom">Custom (advanced)</option>
+                    </select>
+                </div>
+
+                <!-- Twice daily options -->
+                <div x-show="schedMode === 'twice_daily'" class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[10px] text-slate-500 uppercase font-mono block mb-1">Morning time (IST)</label>
+                        <input x-model="twiceDaily.morning" type="time" @change="updateCronFromBuilder()"
+                               class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-slate-500 uppercase font-mono block mb-1">Afternoon time (IST)</label>
+                        <input x-model="twiceDaily.afternoon" type="time" @change="updateCronFromBuilder()"
+                               class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+                    </div>
+                </div>
+
+                <!-- Once daily -->
+                <div x-show="schedMode === 'once_daily'">
+                    <label class="text-[10px] text-slate-500 uppercase font-mono block mb-1">Run time (IST)</label>
+                    <input x-model="onceDaily.time" type="time" @change="updateCronFromBuilder()"
+                           class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+                </div>
+
+                <!-- Every N hours -->
+                <div x-show="schedMode === 'every_n_hours'" class="flex items-center gap-3">
+                    <label class="text-[10px] text-slate-500 uppercase font-mono whitespace-nowrap">Every</label>
+                    <input x-model.number="everyNHours.n" type="number" min="1" max="23" @change="updateCronFromBuilder()"
+                           class="w-20 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+                    <label class="text-[10px] text-slate-500 uppercase font-mono whitespace-nowrap">hours</label>
+                </div>
+
+                <!-- Human-readable summary -->
+                <div class="bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-xs text-slate-300">
+                    <span class="text-slate-500 font-mono text-[10px] uppercase">Schedule summary: </span>
+                    <span x-text="schedSummary" class="font-semibold text-indigo-300"></span>
+                </div>
+
+                <!-- Advanced: raw cron toggle -->
+                <div>
+                    <button type="button" @click="showRawCron = !showRawCron"
+                            class="text-[10px] text-slate-500 hover:text-slate-300 font-mono underline transition">
+                        <span x-text="showRawCron ? '▾ Hide raw cron' : '▸ Advanced: edit raw cron'"></span>
+                    </button>
+                    <div x-show="showRawCron" class="mt-2 space-y-1">
+                        <label class="text-[10px] text-slate-500 font-bold uppercase tracking-wider font-mono">Raw Cron Pattern (UTC)</label>
+                        <input x-model="form.cronSchedule" type="text" @input="updateSummaryFromRaw()"
+                               class="w-full bg-slate-950 border border-slate-850 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono min-h-[44px]" />
+                        <p class="text-[10px] text-slate-600">Format: <code class="font-mono">minute hour * * *</code> — e.g. <code class="font-mono">0 3,12 * * *</code> runs at 03:00 and 12:00 UTC</p>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- SECTION 3: BROWSER ENGINE SETTINGS -->
+        <!-- SECTION 3: NOTIFICATIONS -->
         <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
             <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
-                <span>🌐</span> Browser Engine Settings
+                <span>🔔</span> Notifications
             </h3>
             <div class="flex flex-col space-y-1">
-                <label class="text-[9px] text-slate-500 font-bold uppercase tracking-wider font-mono">CloakBrowser CDP Remote Debug Endpoint</label>
-                <input type="url" value="{{.Config.BrowserEndpoint}}" class="bg-slate-950 border border-slate-850 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono" />
+                <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">Apprise Notification Endpoint</label>
+                <p class="text-[10px] text-slate-500">URL of your Apprise server's notify endpoint. PriceWatcher POSTs price alerts here. Leave unchanged if using the default setup.</p>
+                <input x-model="form.appriseURL" type="url"
+                       class="bg-slate-950 border border-slate-850 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+            </div>
+            <div class="flex flex-col space-y-1">
+                <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">Alert Cooldown (hours)</label>
+                <p class="text-[10px] text-slate-500">Minimum hours between repeated alerts for the same product — prevents notification floods when prices stay low.</p>
+                <input x-model.number="form.alertCooldownHrs" type="number" min="0"
+                       class="bg-slate-950 border border-slate-850 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
             </div>
         </div>
 
-        <!-- SECTION 4: NOTIFICATIONS -->
+        <!-- SECTION 4: PERFORMANCE -->
         <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
             <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
-                <span>🔔</span> Notifications Setup
+                <span>⚡</span> Performance
             </h3>
             <div class="flex flex-col space-y-1">
-                <label class="text-[9px] text-slate-500 font-bold uppercase tracking-wider font-mono">Apprise Notification Endpoint</label>
-                <input type="url" value="{{.Config.AlertCooldown}}" class="bg-slate-950 border border-slate-850 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono" />
+                <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">How many products to check at once</label>
+                <p class="text-[10px] text-slate-500">Number of products scraped in parallel. Higher = faster syncs but more network/CPU load on the server. Recommended: 3–8.</p>
+                <input x-model.number="form.workerCount" type="number" min="1" max="50"
+                       class="bg-slate-950 border border-slate-850 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
             </div>
         </div>
 
-        <!-- SECTION 5: PERFORMANCE -->
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow">
-            <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono border-b border-slate-800 pb-2 flex items-center gap-2">
-                <span>🛠️</span> Performance Settings
-            </h3>
-            <div class="flex flex-col space-y-1">
-                <label class="text-[9px] text-slate-500 font-bold uppercase tracking-wider font-mono">Max Scrapers Workers</label>
-                <input type="number" value="{{.Config.WorkerCount}}" class="bg-slate-950 border border-slate-850 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono" />
+        <!-- SECTION 5: ADVANCED (collapsible) -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl shadow overflow-hidden">
+            <button type="button" @click="showAdvanced = !showAdvanced"
+                    class="w-full p-5 flex items-center justify-between text-left">
+                <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                    <span>🛠️</span> Advanced Settings
+                </h3>
+                <span x-text="showAdvanced ? '▾' : '▸'" class="text-slate-500 font-mono text-sm"></span>
+            </button>
+            <div x-show="showAdvanced" class="px-5 pb-5 space-y-4 border-t border-slate-800">
+                <div class="flex flex-col space-y-1 pt-4">
+                    <label class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">CloakBrowser CDP Remote Debug Endpoint</label>
+                    <p class="text-[10px] text-slate-500">Address of the headless browser PriceWatcher uses to load pages that block simple HTTP requests (Layer 3 scraping). Change only if your CloakBrowser instance runs on a different host/port.</p>
+                    <input x-model="form.browserEndpoint" type="url"
+                           class="bg-slate-950 border border-slate-850 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono min-h-[44px]" />
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded-lg p-3 text-[10px] text-slate-500 font-mono space-y-1">
+                    <p class="font-semibold text-slate-400">ℹ️ Restart required for:</p>
+                    <p>• <code>WEB_PORT</code> — web UI port changes</p>
+                    <p>• <code>DB_PATH</code> — database file location</p>
+                    <p>• <code>CRON_SCHEDULE</code> (env var) — schedule set via env var (not the form above)</p>
+                    <p class="mt-1 text-slate-600">All other settings apply after clicking Save.</p>
+                </div>
             </div>
         </div>
 
     </div>
 </div>
+
+<script>
+function settingsApp() {
+    const IST_OFFSET = 5.5 * 60; // IST is UTC+5:30
+
+    // Convert UTC hour/minute → IST time string "HH:MM"
+    function utcToIST(utcHour, utcMin) {
+        const totalMin = utcHour * 60 + utcMin + IST_OFFSET;
+        const h = Math.floor((totalMin % (24*60)) / 60);
+        const m = totalMin % 60;
+        return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+    }
+
+    // Convert IST time string "HH:MM" → UTC hour, minute
+    function istToUTC(timeStr) {
+        const [h, m] = timeStr.split(':').map(Number);
+        const totalMin = h * 60 + m - IST_OFFSET;
+        const adj = ((totalMin % (24*60)) + 24*60) % (24*60);
+        return { h: Math.floor(adj / 60), m: adj % 60 };
+    }
+
+    function parseCron(cron) {
+        const parts = cron.trim().split(/\s+/);
+        if (parts.length < 5) return null;
+        return { min: parts[0], hour: parts[1], dom: parts[2], mon: parts[3], dow: parts[4] };
+    }
+
+    function cronSummary(cronStr) {
+        const p = parseCron(cronStr);
+        if (!p) return 'Invalid cron pattern';
+        if (p.hour.includes(',')) {
+            const hours = p.hour.split(',').map(h => {
+                const ist = utcToIST(parseInt(h), parseInt(p.min));
+                return ist + ' IST';
+            });
+            return 'Runs at ' + hours.join(' and ') + ' daily';
+        }
+        if (p.hour === '*') {
+            const minInt = parseInt(p.min);
+            if (isNaN(minInt) || minInt === 0) return 'Runs every hour';
+            return 'Runs every hour at :' + String(minInt).padStart(2,'0');
+        }
+        if (p.hour.includes('/')) {
+            const n = p.hour.split('/')[1];
+            return 'Runs every ' + n + ' hours';
+        }
+        const ist = utcToIST(parseInt(p.hour), parseInt(p.min) || 0);
+        return 'Runs once daily at ' + ist + ' IST';
+    }
+
+    return {
+        form: {
+            feedURL: '{{.Config.FeedURL}}',
+            cronSchedule: '{{.Config.CronSchedule}}',
+            browserEndpoint: '{{.Config.BrowserEndpoint}}',
+            appriseURL: '{{.Config.AppriseURL}}',
+            alertCooldownHrs: {{.Config.AlertCooldownHrs}},
+            workerCount: {{.Config.WorkerCount}},
+        },
+        schedMode: 'twice_daily',
+        twiceDaily: { morning: '08:30', afternoon: '17:30' },
+        onceDaily: { time: '08:30' },
+        everyNHours: { n: 4 },
+        showRawCron: false,
+        showAdvanced: false,
+        schedSummary: '',
+        saving: false,
+        toast: { show: false, message: '', type: 'success' },
+
+        init() {
+            this.detectModeFromCron(this.form.cronSchedule);
+            this.updateSummaryFromRaw();
+        },
+
+        detectModeFromCron(cronStr) {
+            const p = parseCron(cronStr);
+            if (!p) { this.schedMode = 'custom'; return; }
+            if (p.hour.includes(',') && !p.hour.includes('/')) {
+                const hours = p.hour.split(',');
+                if (hours.length === 2) {
+                    this.schedMode = 'twice_daily';
+                    this.twiceDaily.morning = utcToIST(parseInt(hours[0]), parseInt(p.min)||0);
+                    this.twiceDaily.afternoon = utcToIST(parseInt(hours[1]), parseInt(p.min)||0);
+                    return;
+                }
+            }
+            if (p.hour.includes('/')) {
+                this.schedMode = 'every_n_hours';
+                this.everyNHours.n = parseInt(p.hour.split('/')[1]) || 4;
+                return;
+            }
+            if (p.hour === '*') { this.schedMode = 'hourly'; return; }
+            this.schedMode = 'once_daily';
+            this.onceDaily.time = utcToIST(parseInt(p.hour), parseInt(p.min)||0);
+        },
+
+        updateCronFromBuilder() {
+            const p = parseCron(this.form.cronSchedule);
+            const curMin = p ? (parseInt(p.min) || 0) : 0;
+            if (this.schedMode === 'twice_daily') {
+                const a = istToUTC(this.twiceDaily.morning);
+                const b = istToUTC(this.twiceDaily.afternoon);
+                this.form.cronSchedule = `${a.m} ${a.h},${b.h} * * *`;
+            } else if (this.schedMode === 'once_daily') {
+                const u = istToUTC(this.onceDaily.time);
+                this.form.cronSchedule = `${u.m} ${u.h} * * *`;
+            } else if (this.schedMode === 'every_n_hours') {
+                const n = Math.max(1, Math.min(23, this.everyNHours.n || 4));
+                this.form.cronSchedule = `${curMin} */${n} * * *`;
+            } else if (this.schedMode === 'hourly') {
+                this.form.cronSchedule = `${curMin} * * * *`;
+            }
+            this.updateSummaryFromRaw();
+        },
+
+        updateSummaryFromRaw() {
+            this.schedSummary = cronSummary(this.form.cronSchedule);
+        },
+
+        showToast(message, type = 'success') {
+            this.toast = { show: true, message, type };
+            setTimeout(() => { this.toast.show = false; }, 4000);
+        },
+
+        async saveSettings() {
+            this.saving = true;
+            try {
+                const resp = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        feed_url: this.form.feedURL,
+                        cron_schedule: this.form.cronSchedule,
+                        browser_endpoint: this.form.browserEndpoint,
+                        apprise_url: this.form.appriseURL,
+                        alert_cooldown_hrs: this.form.alertCooldownHrs,
+                        worker_count: this.form.workerCount,
+                    })
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    this.showToast(data.message || 'Settings saved!');
+                } else {
+                    this.showToast('Error: ' + (data.error || 'Save failed'), 'error');
+                }
+            } catch(e) {
+                this.showToast('Network error: ' + e.message, 'error');
+            } finally {
+                this.saving = false;
+            }
+        }
+    };
+}
+</script>
 {{template "footer" .}}
 {{end}}
