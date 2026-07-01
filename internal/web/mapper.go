@@ -233,6 +233,10 @@ func BuildSettingsPage(cfg *config.Config, srvDb *db.DB, scheduler *cron.Cron, r
 		AppriseURL:       cfg.AppriseURL,
 		AlertCooldownHrs: cfg.AlertCooldownHrs,
 		WorkerCount:      cfg.MaxHTTPConcurrent,
+		HTTPTimeoutSec:   int(cfg.HTTPTimeout.Seconds()),
+		CDPTimeoutSec:    int(cfg.CDPTimeout.Seconds()),
+		WebPort:          cfg.WebPort,
+		DBPath:           cfg.DBPath,
 	}
 
 	return SettingsPage{

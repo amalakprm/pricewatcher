@@ -103,7 +103,7 @@
                     <input type="text" x-model="cfg.cronSchedule" @input="syncFromRaw()"
                            placeholder="e.g. 0 3,12 * * *"
                            class="bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono min-h-[44px]" />
-                    <p class="text-[10px] text-slate-600 font-mono">Cron fields: minute hour day-of-month month day-of-week (server/UTC time)</p>
+                    <p class="text-[10px] text-slate-600 font-mono">Cron fields: minute hour day-of-month month day-of-week (UTC — times above are automatically converted from IST)</p>
                 </div>
             </div>
         </div>
@@ -252,10 +252,10 @@ function settingsApp() {
             cdpEndpoint: {{printf "%q" .Config.BrowserEndpoint}},
             appriseURL: {{printf "%q" .Config.AppriseURL}},
             workerCount: {{.Config.WorkerCount}},
-            httpTimeout: 15,
-            cdpTimeout: 30,
-            webPort: ':8420',
-            dbPath: '/app/data/pricewatcher.db',
+            httpTimeout: {{.Config.HTTPTimeoutSec}},
+            cdpTimeout: {{.Config.CDPTimeoutSec}},
+            webPort: {{printf "%q" .Config.WebPort}},
+            dbPath: {{printf "%q" .Config.DBPath}},
             alertCooldown: {{.Config.AlertCooldownHrs}}
         },
         schedule: { mode: 'daily_times', times: ['03:30', '12:00'], everyN: 4, showRaw: false },
@@ -318,14 +318,41 @@ function settingsApp() {
             }
         },
 
-        saveSettings() {
+        async saveSettings() {
             this.saving = true;
-            // Settings are environment-variable driven; in this UI we just acknowledge
-            // and show guidance. A future version can persist to a config overlay file.
-            setTimeout(() => {
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        feedURL: this.cfg.feedURL,
+                        cronSchedule: this.cfg.cronSchedule,
+                        browserEndpoint: this.cfg.cdpEndpoint,
+                        appriseURL: this.cfg.appriseURL,
+                        alertCooldown: this.cfg.alertCooldown,
+                        workerCount: this.cfg.workerCount,
+                        httpTimeout: this.cfg.httpTimeout,
+                        cdpTimeout: this.cfg.cdpTimeout,
+                        webPort: this.cfg.webPort,
+                        dbPath: this.cfg.dbPath
+                    })
+                });
+                if (!res.ok) {
+                    const text = await res.text();
+                    this.showToast('Save failed: ' + text, 'error');
+                    return;
+                }
+                const data = await res.json();
+                if (data.requireRestart && data.requireRestart.length > 0) {
+                    this.showToast('Settings saved. Restart required for: ' + data.requireRestart.join(', '), 'warning');
+                } else {
+                    this.showToast('Settings saved successfully.', 'success');
+                }
+            } catch (e) {
+                this.showToast('Save failed: ' + e.message, 'error');
+            } finally {
                 this.saving = false;
-                this.showToast('Settings noted. Apply them via environment variables and restart if needed.', 'success');
-            }, 600);
+            }
         }
     };
 }

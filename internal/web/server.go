@@ -79,13 +79,15 @@ func (b *LogRingBuffer) GetEntries() []LogEntry {
 
 // Server acts as the web console execution context.
 type Server struct {
-	db        *db.DB
-	cfg       *config.Config
-	cron      *cron.Cron
-	logBuffer *LogRingBuffer
-	templates *template.Template
-	running   bool
-	runningMu sync.Mutex
+	db           *db.DB
+	cfg          *config.Config
+	cron         *cron.Cron
+	cronEntryID  cron.EntryID
+	cronMu       sync.Mutex
+	logBuffer    *LogRingBuffer
+	templates    *template.Template
+	running      bool
+	runningMu    sync.Mutex
 }
 
 // NewServer registers custom functions and compiles page templates using wildcards.
@@ -106,13 +108,18 @@ func NewServer(database *db.DB, cfg *config.Config, cr *cron.Cron, logBuffer *Lo
 		"templates/components/*.html",
 	))
 
-	return &Server{
+	s := &Server{
 		db:        database,
 		cfg:       cfg,
 		cron:      cr,
 		logBuffer: logBuffer,
 		templates: tmpl,
 	}
+	// Capture the ID of the first (and only) cron entry so we can reschedule it.
+	if entries := cr.Entries(); len(entries) > 0 {
+		s.cronEntryID = entries[0].ID
+	}
+	return s
 }
 
 // Routes configures URL mapping to Server handler actions.
@@ -140,6 +147,7 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("PUT /api/products/{id}", s.handleUpdateProduct)
 	mux.HandleFunc("POST /api/products/{id}/toggle", s.handleToggleProductActive)
 	mux.HandleFunc("POST /api/feed/sync", s.handleFeedSync)
+	mux.HandleFunc("POST /api/settings", s.handleSaveSettings)
 	mux.HandleFunc("GET /logs/run/{id}", s.handleRunDetailsPartial)
 	mux.HandleFunc("GET /health", s.handleHealth)
 

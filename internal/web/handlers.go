@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/robfig/cron/v3"
 	"pricewatcher/internal/db"
 	"pricewatcher/internal/feed"
 	"pricewatcher/internal/notify"
@@ -553,4 +554,94 @@ func safeSlice(s string, maxLen int) string {
 		return string(runes[:maxLen]) + "..."
 	}
 	return s
+}
+
+// handleSaveSettings applies live-capable settings to the in-memory config and
+// reschedules the cron job when the schedule changes. Settings that require a
+// container restart (WebPort, DBPath) are accepted but flagged in the response.
+func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		FeedURL          string `json:"feedURL"`
+		CronSchedule     string `json:"cronSchedule"`
+		BrowserEndpoint  string `json:"browserEndpoint"`
+		AppriseURL       string `json:"appriseURL"`
+		AlertCooldownHrs int    `json:"alertCooldown"`
+		WorkerCount      int    `json:"workerCount"`
+		HTTPTimeoutSec   int    `json:"httpTimeout"`
+		CDPTimeoutSec    int    `json:"cdpTimeout"`
+		WebPort          string `json:"webPort"`
+		DBPath           string `json:"dbPath"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Validate cron schedule before applying anything.
+	cronParser := cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	if body.CronSchedule != "" {
+		if _, err := cronParser.Parse(body.CronSchedule); err != nil {
+			http.Error(w, fmt.Sprintf("invalid cron schedule: %v", err), http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Track which settings require a container restart.
+	var requiresRestart []string
+
+	// Apply live-capable settings.
+	if body.FeedURL != "" {
+		s.cfg.FeedURL = body.FeedURL
+	}
+	if body.AppriseURL != "" {
+		s.cfg.AppriseURL = body.AppriseURL
+	}
+	if body.BrowserEndpoint != "" {
+		s.cfg.CloakBrowserCDP = body.BrowserEndpoint
+	}
+	if body.AlertCooldownHrs > 0 {
+		s.cfg.AlertCooldownHrs = body.AlertCooldownHrs
+	}
+	if body.WorkerCount > 0 {
+		s.cfg.MaxHTTPConcurrent = body.WorkerCount
+	}
+	if body.HTTPTimeoutSec > 0 {
+		s.cfg.HTTPTimeout = time.Duration(body.HTTPTimeoutSec) * time.Second
+	}
+	if body.CDPTimeoutSec > 0 {
+		s.cfg.CDPTimeout = time.Duration(body.CDPTimeoutSec) * time.Second
+	}
+
+	// Reschedule cron if the schedule changed.
+	if body.CronSchedule != "" && body.CronSchedule != s.cfg.CronSchedule {
+		s.cronMu.Lock()
+		s.cron.Remove(s.cronEntryID)
+		newID, err := s.cron.AddFunc(body.CronSchedule, func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
+			defer cancel()
+			_ = runner.RunOnce(ctx, s.db, s.cfg)
+		})
+		if err == nil {
+			s.cronEntryID = newID
+			s.cfg.CronSchedule = body.CronSchedule
+			slog.Info("cron schedule updated", "schedule", body.CronSchedule)
+		} else {
+			slog.Error("failed to reschedule cron", "error", err)
+		}
+		s.cronMu.Unlock()
+	}
+
+	// Settings that cannot be changed at runtime.
+	if body.WebPort != "" && body.WebPort != s.cfg.WebPort {
+		requiresRestart = append(requiresRestart, "webPort")
+	}
+	if body.DBPath != "" && body.DBPath != s.cfg.DBPath {
+		requiresRestart = append(requiresRestart, "dbPath")
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":             true,
+		"requireRestart": requiresRestart,
+	})
 }

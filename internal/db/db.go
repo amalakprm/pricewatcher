@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -461,44 +462,23 @@ func (d *DB) MarkRemovedFeedProducts(presentURLs []string) (int, error) {
 		return 0, nil
 	}
 
-	// Build a set of present URLs
-	urlSet := make(map[string]struct{}, len(presentURLs))
-	for _, u := range presentURLs {
-		urlSet[u] = struct{}{}
+	// Build a single UPDATE with a NOT IN clause to avoid N round-trips.
+	placeholders := make([]string, len(presentURLs))
+	args := make([]interface{}, len(presentURLs))
+	for i, u := range presentURLs {
+		placeholders[i] = "?"
+		args[i] = u
 	}
-
-	// Get all feed products
-	rows, err := d.conn.Query(`SELECT id, url FROM products WHERE source = 'feed' AND status != 'removed'`)
+	query := fmt.Sprintf(
+		"UPDATE products SET status = 'removed', active = 0 WHERE source = 'feed' AND status != 'removed' AND url NOT IN (%s)",
+		strings.Join(placeholders, ","),
+	)
+	res, err := d.conn.Exec(query, args...)
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
-
-	type row struct {
-		id  int64
-		url string
-	}
-	var toRemove []int64
-	for rows.Next() {
-		var r row
-		if err := rows.Scan(&r.id, &r.url); err != nil {
-			return 0, err
-		}
-		if _, found := urlSet[r.url]; !found {
-			toRemove = append(toRemove, r.id)
-		}
-	}
-	rows.Close()
-
-	count := 0
-	for _, id := range toRemove {
-		_, err := d.conn.Exec(`UPDATE products SET status = 'removed', active = 0 WHERE id = ?`, id)
-		if err != nil {
-			return count, err
-		}
-		count++
-	}
-	return count, nil
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 func (d *DB) SetProductActive(id int64, active bool) error {

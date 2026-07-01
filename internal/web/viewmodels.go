@@ -126,4 +126,8 @@ type UIConfig struct {
 	AppriseURL       string // Apprise notification endpoint
 	AlertCooldownHrs int    // Alert cooldown in hours
 	WorkerCount      int
+	HTTPTimeoutSec   int // HTTP fetch timeout in seconds
+	CDPTimeoutSec    int // CDP (headless browser) timeout in seconds
+	WebPort          string
+	DBPath           string
 }
