@@ -386,6 +386,8 @@ func (s *Server) handleAddProduct(w http.ResponseWriter, r *http.Request) {
 	if body.Title != "" {
 		if err := s.db.UpdateProduct(id, body.Title, body.TargetPrice, "active"); err != nil {
 			slog.Error("Failed to set custom title on new product", "id", id, "error", err)
+			http.Error(w, "product added but failed to save title", http.StatusInternalServerError)
+			return
 		}
 	}
 

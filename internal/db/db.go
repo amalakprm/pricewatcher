@@ -281,7 +281,9 @@ func (d *DB) UpsertProduct(url string, targetPrice float64, source string) (int6
 
 	if source == "feed" {
 		if existingSource == "feed" {
-			// Update target price and clear any pending-removal grace flag
+			// Update target price and clear any pending-removal grace flag.
+			// The CASE keeps active/paused status intact; only re-activates 'removed' products
+			// that reappear in the feed (they were removed by a prior sync but are back now).
 			_, err = d.conn.Exec(`
 				UPDATE products
 				SET target_price = ?, removal_pending = 0, status = CASE WHEN status = 'removed' THEN 'active' ELSE status END, active = 1
@@ -478,6 +480,9 @@ func (d *DB) DeleteProduct(id int64) error {
 	return tx.Commit()
 }
 
+// UpdateProductTarget changes only the target price for a product.
+// It intentionally does not modify the source field so that feed-managed
+// products are not accidentally converted to manually-managed ones.
 func (d *DB) UpdateProductTarget(id int64, targetPrice float64) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()

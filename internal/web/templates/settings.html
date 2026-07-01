@@ -96,11 +96,11 @@
 
                 <!-- Advanced: raw cron toggle -->
                 <div>
-                    <button type="button" @click="showRawCron = !showRawCron"
+                    <button type="button" @click="showAdvancedCron = !showAdvancedCron"
                             class="text-[10px] text-slate-500 hover:text-slate-300 font-mono underline transition">
-                        <span x-text="showRawCron ? '▾ Hide raw cron' : '▸ Advanced: edit raw cron'"></span>
+                        <span x-text="showAdvancedCron ? '▾ Hide raw cron' : '▸ Advanced: edit raw cron'"></span>
                     </button>
-                    <div x-show="showRawCron" class="mt-2 space-y-1">
+                    <div x-show="showAdvancedCron" class="mt-2 space-y-1">
                         <label class="text-[10px] text-slate-500 font-bold uppercase tracking-wider font-mono">Raw Cron Pattern (UTC)</label>
                         <input x-model="form.cronSchedule" type="text" @input="updateSummaryFromRaw()"
                                class="w-full bg-slate-950 border border-slate-850 rounded-lg px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono min-h-[44px]" />
@@ -236,7 +236,7 @@ function settingsApp() {
         twiceDaily: { morning: '08:30', afternoon: '17:30' },
         onceDaily: { time: '08:30' },
         everyNHours: { n: 4 },
-        showRawCron: false,
+        showAdvancedCron: false,
         showAdvanced: false,
         schedSummary: '',
         saving: false,
