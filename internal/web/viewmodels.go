@@ -53,6 +53,10 @@ type ProductCard struct {
 	TargetPrice         float64
 	IsOnTarget          bool
 	Active              bool
+	Status              string // "active", "paused", "removed"
+	Source              string // "manual", "feed"
+	CustomTitle         string
+	Notes               string
 	TimeSinceLastScrape string
 	LayerUsed           int
 }
@@ -72,6 +76,10 @@ type ProductDetails struct {
 	Title        string
 	CurrentPrice float64
 	TargetPrice  float64
+	Status       string // "active", "paused", "removed"
+	Source       string // "manual", "feed"
+	CustomTitle  string
+	Notes        string
 	HistoryJSON  template.JS
 	History      []PricePoint      // Price history points list
 	Logs         []ScrapeLogRecord // Scrape logs history list
@@ -110,11 +118,16 @@ type SettingsPage struct {
 	Config UIConfig
 }
 
-// UIConfig represents exactly the 5 fields exposed in settings configuration form.
+// UIConfig represents the settings fields exposed in the configuration form.
 type UIConfig struct {
-	FeedURL         string
-	CronSchedule    string
-	BrowserEndpoint string
-	AlertCooldown   string
-	WorkerCount     int
+	FeedURL          string
+	CronSchedule     string
+	BrowserEndpoint  string
+	AppriseURL       string // Apprise notification endpoint
+	AlertCooldownHrs int    // Alert cooldown in hours
+	WorkerCount      int
+	HTTPTimeoutSec   int // HTTP fetch timeout in seconds
+	CDPTimeoutSec    int // CDP (headless browser) timeout in seconds
+	WebPort          string
+	DBPath           string
 }

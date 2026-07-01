@@ -1,104 +1,317 @@
 {{define "products.html"}}
 {{template "header" .}}
-<div class="space-y-6" x-data="{ 
-    searchVal: '',
-    storeFilter: '',
-    statusFilter: '',
-    matches(product) {
-        const sMatch = !this.searchVal || product.Title.toLowerCase().includes(this.searchVal.toLowerCase()) || product.URL.toLowerCase().includes(this.searchVal.toLowerCase());
-        const storeMatch = !this.storeFilter || product.Site === this.storeFilter;
-        let statusMatch = true;
-        if (this.statusFilter === 'active') statusMatch = product.Active;
-        else if (this.statusFilter === 'paused') statusMatch = !product.Active;
-        else if (this.statusFilter === 'on_target') statusMatch = product.IsOnTarget;
-        else if (this.statusFilter === 'above_target') statusMatch = !product.IsOnTarget && product.CurrentPrice > 0;
-        
-        return sMatch && storeMatch && statusMatch;
-    }
-}">
-    <!-- Header -->
-    <div>
-        <h1 class="text-2xl font-bold text-white tracking-tight">Products List</h1>
-        <p class="text-xs text-slate-500 font-mono mt-1">Manage and filter watchlist items</p>
+<div class="space-y-6" x-data="productsApp()" x-init="init()">
+
+    <!-- Toast Notification -->
+    <div x-show="toast.show"
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 translate-y-2"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         :class="toast.type === 'error' ? 'bg-rose-900 border-rose-700 text-rose-200' : 'bg-emerald-900 border-emerald-700 text-emerald-200'"
+         class="fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg border text-xs font-semibold shadow-xl max-w-xs"
+         style="display:none">
+        <span x-text="toast.message"></span>
+    </div>
+
+    <!-- Add Product Modal -->
+    <div x-show="showAddModal"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+         style="display:none"
+         @keydown.escape.window="showAddModal = false">
+        <div @click.away="showAddModal = false"
+             class="bg-slate-900 border border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl space-y-4">
+            <div class="flex justify-between items-center">
+                <h3 class="text-sm font-bold text-white">Add Product</h3>
+                <button @click="showAddModal = false" class="text-slate-400 hover:text-white text-lg leading-none min-h-[44px] min-w-[44px] flex items-center justify-center">&times;</button>
+            </div>
+            <div class="space-y-3">
+                <div class="flex flex-col space-y-1">
+                    <label class="text-[10px] text-slate-400 uppercase font-mono font-bold tracking-wider">Product URL *</label>
+                    <input type="url" x-model="addForm.url" placeholder="https://www.amazon.in/dp/..."
+                           class="bg-slate-950 border border-slate-700 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+                </div>
+                <div class="flex flex-col space-y-1">
+                    <label class="text-[10px] text-slate-400 uppercase font-mono font-bold tracking-wider">Target Price (₹) *</label>
+                    <input type="number" x-model.number="addForm.target_price" placeholder="e.g. 999"
+                           class="bg-slate-950 border border-slate-700 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+                </div>
+                <div class="flex flex-col space-y-1">
+                    <label class="text-[10px] text-slate-400 uppercase font-mono font-bold tracking-wider">Custom Title (optional)</label>
+                    <input type="text" x-model="addForm.custom_title" placeholder="My product label"
+                           class="bg-slate-950 border border-slate-700 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+                </div>
+                <div class="flex flex-col space-y-1">
+                    <label class="text-[10px] text-slate-400 uppercase font-mono font-bold tracking-wider">Notes (optional)</label>
+                    <textarea x-model="addForm.notes" rows="2" placeholder="Any notes..."
+                             class="bg-slate-950 border border-slate-700 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition resize-none"></textarea>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button @click="showAddModal = false"
+                        class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 rounded text-xs font-semibold text-slate-300 transition min-h-[44px]">Cancel</button>
+                <button @click="submitAdd()"
+                        :disabled="addLoading"
+                        class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded text-xs font-semibold text-white transition min-h-[44px]">
+                    <span x-show="!addLoading">Add Product</span>
+                    <span x-show="addLoading">Adding...</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Product Modal -->
+    <div x-show="showEditModal"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+         style="display:none"
+         @keydown.escape.window="showEditModal = false">
+        <div @click.away="showEditModal = false"
+             class="bg-slate-900 border border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl space-y-4">
+            <div class="flex justify-between items-center">
+                <h3 class="text-sm font-bold text-white">Edit Product</h3>
+                <button @click="showEditModal = false" class="text-slate-400 hover:text-white text-lg leading-none min-h-[44px] min-w-[44px] flex items-center justify-center">&times;</button>
+            </div>
+            <p class="text-[10px] text-slate-500 font-mono truncate" x-text="editForm.url"></p>
+            <div class="space-y-3">
+                <div class="flex flex-col space-y-1">
+                    <label class="text-[10px] text-slate-400 uppercase font-mono font-bold tracking-wider">Target Price (₹) *</label>
+                    <input type="number" x-model.number="editForm.target_price"
+                           class="bg-slate-950 border border-slate-700 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+                </div>
+                <div class="flex flex-col space-y-1">
+                    <label class="text-[10px] text-slate-400 uppercase font-mono font-bold tracking-wider">Custom Title (optional)</label>
+                    <input type="text" x-model="editForm.custom_title"
+                           class="bg-slate-950 border border-slate-700 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+                </div>
+                <div class="flex flex-col space-y-1">
+                    <label class="text-[10px] text-slate-400 uppercase font-mono font-bold tracking-wider">Status</label>
+                    <select x-model="editForm.status"
+                            class="bg-slate-950 border border-slate-700 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]">
+                        <option value="active">Active</option>
+                        <option value="paused">Paused</option>
+                        <option value="removed">Removed</option>
+                    </select>
+                </div>
+                <div class="flex flex-col space-y-1">
+                    <label class="text-[10px] text-slate-400 uppercase font-mono font-bold tracking-wider">Notes (optional)</label>
+                    <textarea x-model="editForm.notes" rows="2"
+                             class="bg-slate-950 border border-slate-700 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition resize-none"></textarea>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button @click="showEditModal = false"
+                        class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 rounded text-xs font-semibold text-slate-300 transition min-h-[44px]">Cancel</button>
+                <button @click="submitEdit()"
+                        :disabled="editLoading"
+                        class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded text-xs font-semibold text-white transition min-h-[44px]">
+                    <span x-show="!editLoading">Save Changes</span>
+                    <span x-show="editLoading">Saving...</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirm Modal -->
+    <div x-show="showDeleteModal"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+         style="display:none"
+         @keydown.escape.window="showDeleteModal = false">
+        <div @click.away="showDeleteModal = false"
+             class="bg-slate-900 border border-rose-800/50 rounded-xl p-6 w-full max-w-sm shadow-2xl space-y-4">
+            <h3 class="text-sm font-bold text-white">Delete Product?</h3>
+            <p class="text-xs text-slate-400">This will permanently delete the product and all its price history. This action cannot be undone.</p>
+            <p class="text-[10px] text-rose-400 font-mono truncate" x-text="deleteTarget.url"></p>
+            <div class="flex justify-end gap-2">
+                <button @click="showDeleteModal = false"
+                        class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 rounded text-xs font-semibold text-slate-300 transition min-h-[44px]">Cancel</button>
+                <button @click="submitDelete()"
+                        :disabled="deleteLoading"
+                        class="px-4 py-2.5 bg-rose-700 hover:bg-rose-600 disabled:opacity-50 rounded text-xs font-semibold text-white transition min-h-[44px]">
+                    <span x-show="!deleteLoading">Delete</span>
+                    <span x-show="deleteLoading">Deleting...</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Target Price Modal -->
+    <div x-show="showBulkPriceModal"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+         style="display:none"
+         @keydown.escape.window="showBulkPriceModal = false">
+        <div @click.away="showBulkPriceModal = false"
+             class="bg-slate-900 border border-slate-700 rounded-xl p-6 w-full max-w-sm shadow-2xl space-y-4">
+            <h3 class="text-sm font-bold text-white">Set Target Price</h3>
+            <p class="text-xs text-slate-400">Set the same target price for all <span class="text-white font-bold" x-text="selectedIDs.length"></span> selected products.</p>
+            <div class="flex flex-col space-y-1">
+                <label class="text-[10px] text-slate-400 uppercase font-mono font-bold tracking-wider">Target Price (₹)</label>
+                <input type="number" x-model.number="bulkPrice"
+                       class="bg-slate-950 border border-slate-700 rounded px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition min-h-[44px]" />
+            </div>
+            <div class="flex justify-end gap-2">
+                <button @click="showBulkPriceModal = false"
+                        class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 rounded text-xs font-semibold text-slate-300 transition min-h-[44px]">Cancel</button>
+                <button @click="submitBulkPrice()"
+                        class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 rounded text-xs font-semibold text-white transition min-h-[44px]">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page Header -->
+    <div class="flex flex-wrap gap-3 justify-between items-start">
+        <div>
+            <h1 class="text-2xl font-bold text-white tracking-tight">Products List</h1>
+            <p class="text-xs text-slate-500 font-mono mt-1">Manage and filter watchlist items</p>
+        </div>
+        <button @click="showAddModal = true"
+                class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow transition flex items-center gap-2 min-h-[44px]">
+            <span class="text-base leading-none">+</span> Add Product
+        </button>
     </div>
 
     <!-- Filter Bar -->
-    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-wrap gap-4 items-center justify-between shadow">
-        <div class="flex flex-wrap gap-3 items-center flex-grow">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow">
+        <div class="flex flex-wrap gap-3 items-center">
             <!-- Search field -->
             <input type="search" 
                    x-model="searchVal"
                    placeholder="Search title or url..." 
-                   class="bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 hover:border-slate-700 transition w-full sm:w-64" />
+                   class="bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 hover:border-slate-700 transition w-full sm:w-64 min-h-[44px]" />
             
             <!-- Store Selector -->
-            <select x-model="storeFilter" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none cursor-pointer">
+            <select x-model="storeFilter" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-xs text-slate-300 focus:outline-none cursor-pointer min-h-[44px]">
                 <option value="">All Stores</option>
                 <option value="amazon">Amazon</option>
                 <option value="flipkart">Flipkart</option>
             </select>
 
             <!-- Status Selector -->
-            <select x-model="statusFilter" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none cursor-pointer">
-                <option value="">All Statuses</option>
-                <option value="active">Active</option>
-                <option value="paused">Paused</option>
+            <select x-model="statusFilter" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-xs text-slate-300 focus:outline-none cursor-pointer min-h-[44px]">
+                <option value="">Active + Paused</option>
+                <option value="active">Active only</option>
+                <option value="paused">Paused only</option>
+                <option value="removed">Removed</option>
                 <option value="on_target">On Target</option>
                 <option value="above_target">Above Target</option>
+            </select>
+
+            <!-- Source Selector -->
+            <select x-model="sourceFilter" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-xs text-slate-300 focus:outline-none cursor-pointer min-h-[44px]">
+                <option value="">All Sources</option>
+                <option value="manual">Manual only</option>
+                <option value="feed">Sheet only</option>
             </select>
         </div>
     </div>
 
-    <!-- Inject data into JS array for Alpine filtering -->
+    <!-- Bulk Actions Bar (shown when items are selected) -->
+    <div x-show="selectedIDs.length > 0"
+         x-transition
+         class="bg-indigo-950 border border-indigo-700 rounded-xl px-4 py-3 flex flex-wrap gap-3 items-center justify-between">
+        <span class="text-xs text-indigo-300 font-semibold">
+            <span x-text="selectedIDs.length"></span> product(s) selected
+        </span>
+        <div class="flex flex-wrap gap-2">
+            <button @click="bulkPause()"
+                    class="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded text-xs font-semibold text-slate-200 transition min-h-[44px]">Pause Selected</button>
+            <button @click="showBulkPriceModal = true; bulkPrice = 0"
+                    class="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded text-xs font-semibold text-slate-200 transition min-h-[44px]">Set Target Price</button>
+            <button @click="bulkDelete()"
+                    class="px-3 py-2 bg-rose-900 hover:bg-rose-800 rounded text-xs font-semibold text-rose-200 transition min-h-[44px]">Delete Selected</button>
+            <button @click="selectedIDs = []"
+                    class="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded text-xs font-semibold text-slate-400 transition min-h-[44px]">Clear</button>
+        </div>
+    </div>
+
+    <!-- Inject data into JS -->
     <script>
-        window.productsData = [
+        window._productsData = [
             {{range .Products}}
             {
                 ID: {{.ID}},
-                URL: "{{.URL}}",
-                Base64URL: "{{.Base64URL}}",
-                ShortURL: "{{.ShortURL}}",
-                Site: "{{.Site}}",
-                Title: "{{if .Title}}{{.Title}}{{else}}{{.ShortURL}}{{end}}",
+                URL: {{printf "%q" .URL}},
+                Base64URL: {{printf "%q" .Base64URL}},
+                ShortURL: {{printf "%q" .ShortURL}},
+                Site: {{printf "%q" .Site}},
+                Title: {{printf "%q" (or .Title .ShortURL)}},
                 CurrentPrice: {{.CurrentPrice}},
                 TargetPrice: {{.TargetPrice}},
                 IsOnTarget: {{.IsOnTarget}},
                 Active: {{.Active}},
-                TimeSinceLastScrape: "{{.TimeSinceLastScrape}}"
+                Status: {{printf "%q" .Status}},
+                Source: {{printf "%q" .Source}},
+                CustomTitle: {{printf "%q" .CustomTitle}},
+                Notes: {{printf "%q" .Notes}},
+                TimeSinceLastScrape: {{printf "%q" .TimeSinceLastScrape}}
             },
             {{end}}
         ];
     </script>
 
-    <!-- Grid View Pane -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <template x-for="p in window.productsData" :key="p.ID">
-            <div x-show="matches(p)" 
-                 class="bg-slate-900 border border-slate-805 hover:border-slate-700 rounded-xl p-5 shadow flex flex-col justify-between transition group relative cursor-pointer"
-                 @click="window.location.href='/product/' + p.Base64URL">
-                
-                <div>
+    <!-- Grid View -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+        <template x-for="p in filteredProducts()" :key="p.ID">
+            <div class="bg-slate-900 border rounded-xl p-4 md:p-5 shadow flex flex-col justify-between transition group relative"
+                 :class="p.Status === 'removed' ? 'border-rose-900/50 opacity-70' : (selectedIDs.includes(p.ID) ? 'border-indigo-500 ring-1 ring-indigo-500/30' : 'border-slate-800 hover:border-slate-700')">
+
+                <!-- Checkbox -->
+                <div class="absolute top-3 left-3" @click.stop="">
+                    <input type="checkbox"
+                           :value="p.ID"
+                           :checked="selectedIDs.includes(p.ID)"
+                           @change="toggleSelect(p.ID)"
+                           class="w-4 h-4 accent-indigo-500 cursor-pointer" />
+                </div>
+
+                <div class="pl-6">
                     <!-- Badge Row -->
-                    <div class="flex justify-between items-center mb-3">
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-slate-950 border border-slate-850 text-slate-400" x-text="p.Site === 'amazon' ? '📦 Amazon' : p.Site === 'flipkart' ? '⚡ Flipkart' : '🌐 ' + p.Site"></span>
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase font-mono" 
-                              :class="p.Active ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-500'" 
-                              x-text="p.Active ? 'Active' : 'Paused'"></span>
+                    <div class="flex justify-between items-center mb-3 flex-wrap gap-1">
+                        <div class="flex items-center gap-1.5">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-slate-950 border border-slate-850 text-slate-400"
+                                 x-text="p.Site === 'amazon' ? '📦 Amazon' : p.Site === 'flipkart' ? '⚡ Flipkart' : '🌐 ' + p.Site"></span>
+                            <!-- Source badge -->
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase font-mono"
+                                 :class="p.Source === 'manual' ? 'bg-violet-500/10 text-violet-400' : 'bg-sky-500/10 text-sky-400'"
+                                 :title="p.Source === 'manual' ? 'Manually added' : 'From Google Sheet'"
+                                 x-text="p.Source === 'manual' ? '✏ Manual' : '📋 Sheet'"></span>
+                        </div>
+                        <!-- Status badge -->
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase font-mono"
+                             :class="p.Status === 'active' ? 'bg-emerald-500/10 text-emerald-400' : p.Status === 'removed' ? 'bg-rose-500/10 text-rose-400' : 'bg-slate-800 text-slate-500'"
+                             x-text="p.Status"></span>
                     </div>
 
                     <!-- Title -->
-                    <h3 class="text-sm font-bold text-white line-clamp-2 leading-snug group-hover:text-indigo-400 transition" x-text="p.Title"></h3>
+                    <h3 class="text-sm font-bold text-white line-clamp-2 leading-snug group-hover:text-indigo-400 transition cursor-pointer"
+                        x-text="p.Title"
+                        @click="window.location.href='/product/' + p.Base64URL"></h3>
                 </div>
 
                 <!-- Pricing Section -->
-                <div class="mt-4 pt-3 border-t border-slate-850 space-y-3.5">
+                <div class="mt-4 pt-3 border-t border-slate-850 space-y-3">
                     <div class="flex justify-between items-end">
                         <div>
                             <span class="text-[9px] text-slate-500 uppercase block font-mono">Current Price</span>
-                            <span class="text-base font-bold font-mono" :class="p.IsOnTarget ? 'text-emerald-400' : 'text-slate-200'" x-text="p.CurrentPrice > 0 ? '₹' + p.CurrentPrice : 'N/A'"></span>
+                            <span class="text-base font-bold font-mono"
+                                 :class="p.IsOnTarget ? 'text-emerald-400' : 'text-slate-200'"
+                                 x-text="p.CurrentPrice > 0 ? '₹' + p.CurrentPrice : 'N/A'"></span>
                         </div>
                         <div class="text-right">
-                            <span class="text-[9px] text-slate-500 uppercase block font-mono">Target Price</span>
+                            <span class="text-[9px] text-slate-500 uppercase block font-mono">Target</span>
                             <span class="text-sm font-bold font-mono text-indigo-400" x-text="'₹' + p.TargetPrice"></span>
                         </div>
                     </div>
@@ -106,37 +319,250 @@
                     <!-- Difference -->
                     <div class="flex justify-between items-center text-[10px] font-mono">
                         <span class="text-slate-500">Difference:</span>
-                        <span class="font-bold" 
-                              :class="p.CurrentPrice <= p.TargetPrice ? 'text-emerald-400' : 'text-rose-400'"
-                              x-text="p.CurrentPrice > 0 ? (p.CurrentPrice <= p.TargetPrice ? '₹' + Math.abs(p.CurrentPrice - p.TargetPrice) + ' below' : '₹' + (p.CurrentPrice - p.TargetPrice) + ' above') : 'N/A'">
+                        <span class="font-bold"
+                             :class="p.CurrentPrice <= p.TargetPrice ? 'text-emerald-400' : 'text-rose-400'"
+                             x-text="p.CurrentPrice > 0 ? (p.CurrentPrice <= p.TargetPrice ? '₹' + Math.abs(p.CurrentPrice - p.TargetPrice).toFixed(2) + ' below' : '₹' + (p.CurrentPrice - p.TargetPrice).toFixed(2) + ' above') : 'N/A'">
                         </span>
                     </div>
 
-                    <!-- Footer detail -->
-                    <div class="text-[9px] text-slate-500 font-mono flex justify-between items-center">
+                    <!-- Footer -->
+                    <div class="text-[9px] text-slate-500 font-mono">
                         <span x-text="'Checked ' + p.TimeSinceLastScrape"></span>
+                        <span x-show="p.Notes" class="ml-2 text-slate-600" :title="p.Notes">📝</span>
                     </div>
 
-                    <!-- Quick buttons -->
-                    <div class="flex gap-1.5 justify-end pt-1" @click.stop="">
-                        <a :href="'/product/' + p.Base64URL" 
-                           class="px-2.5 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-slate-300 hover:text-white transition">
+                    <!-- Quick Buttons -->
+                    <div class="flex flex-wrap gap-1.5 justify-end pt-1" @click.stop="">
+                        <a :href="'/product/' + p.Base64URL"
+                           class="px-2.5 py-2 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-slate-300 hover:text-white transition min-h-[44px] flex items-center">
                             View
                         </a>
-                        <button hx-post="/api/run?url=" :hx-post="'/api/run?url=' + p.Base64URL"
-                                hx-swap="none"
-                                class="px-2.5 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-slate-300 hover:text-white transition">
-                            Refresh
+                        <button @click="openEdit(p)"
+                               class="px-2.5 py-2 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-slate-300 hover:text-white transition min-h-[44px] flex items-center">
+                            Edit
                         </button>
-                        <a :href="p.URL" target="_blank" 
-                           class="px-2.5 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-indigo-400 hover:text-indigo-300 transition">
+                        <a :href="p.URL" target="_blank"
+                           class="px-2.5 py-2 bg-slate-950 hover:bg-slate-800 border border-slate-850 rounded text-[10px] font-semibold text-indigo-400 hover:text-indigo-300 transition min-h-[44px] flex items-center">
                             Store
                         </a>
+                        <button @click="openDelete(p)"
+                               class="px-2.5 py-2 bg-slate-950 hover:bg-slate-800 border border-rose-900/40 rounded text-[10px] font-semibold text-rose-500 hover:text-rose-400 transition min-h-[44px] flex items-center">
+                            Delete
+                        </button>
                     </div>
                 </div>
             </div>
         </template>
+
+        <!-- Empty state -->
+        <div x-show="filteredProducts().length === 0"
+             class="col-span-full bg-slate-900 border border-slate-800 rounded-xl p-12 text-center text-slate-500">
+            <span class="text-2xl block mb-2">📦</span>
+            No products match your filters.
+        </div>
     </div>
 </div>
+
+<script>
+function productsApp() {
+    return {
+        products: window._productsData || [],
+        searchVal: '',
+        storeFilter: '',
+        statusFilter: '',
+        sourceFilter: '',
+        selectedIDs: [],
+        showAddModal: false,
+        showEditModal: false,
+        showDeleteModal: false,
+        showBulkPriceModal: false,
+        addLoading: false,
+        editLoading: false,
+        deleteLoading: false,
+        bulkPrice: 0,
+        addForm: { url: '', target_price: 0, custom_title: '', notes: '' },
+        editForm: { id: 0, url: '', target_price: 0, custom_title: '', notes: '', status: 'active' },
+        deleteTarget: { id: 0, url: '' },
+        toast: { show: false, message: '', type: 'success' },
+
+        init() {},
+
+        showToast(message, type = 'success') {
+            this.toast = { show: true, message, type };
+            setTimeout(() => { this.toast.show = false; }, 3500);
+        },
+
+        filteredProducts() {
+            return this.products.filter(p => {
+                // Default: hide removed unless explicitly asked
+                if (this.statusFilter === '') {
+                    if (p.Status === 'removed') return false;
+                } else if (this.statusFilter === 'active') {
+                    if (p.Status !== 'active') return false;
+                } else if (this.statusFilter === 'paused') {
+                    if (p.Status !== 'paused') return false;
+                } else if (this.statusFilter === 'removed') {
+                    if (p.Status !== 'removed') return false;
+                } else if (this.statusFilter === 'on_target') {
+                    if (!p.IsOnTarget) return false;
+                } else if (this.statusFilter === 'above_target') {
+                    if (p.IsOnTarget || p.CurrentPrice <= 0) return false;
+                }
+                if (this.storeFilter && p.Site !== this.storeFilter) return false;
+                if (this.sourceFilter && p.Source !== this.sourceFilter) return false;
+                if (this.searchVal) {
+                    const q = this.searchVal.toLowerCase();
+                    if (!p.Title.toLowerCase().includes(q) && !p.URL.toLowerCase().includes(q)) return false;
+                }
+                return true;
+            });
+        },
+
+        toggleSelect(id) {
+            const idx = this.selectedIDs.indexOf(id);
+            if (idx >= 0) this.selectedIDs.splice(idx, 1);
+            else this.selectedIDs.push(id);
+        },
+
+        openEdit(p) {
+            this.editForm = {
+                id: p.ID, url: p.URL,
+                target_price: p.TargetPrice,
+                custom_title: p.CustomTitle,
+                notes: p.Notes,
+                status: p.Status
+            };
+            this.showEditModal = true;
+        },
+
+        openDelete(p) {
+            this.deleteTarget = { id: p.ID, url: p.URL };
+            this.showDeleteModal = true;
+        },
+
+        async submitAdd() {
+            if (!this.addForm.url || this.addForm.target_price <= 0) {
+                this.showToast('Please fill in a valid URL and target price.', 'error');
+                return;
+            }
+            this.addLoading = true;
+            try {
+                const res = await fetch('/api/products', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.addForm)
+                });
+                if (!res.ok) {
+                    const err = await res.text();
+                    throw new Error(err);
+                }
+                this.showToast('Product added successfully!');
+                this.showAddModal = false;
+                this.addForm = { url: '', target_price: 0, custom_title: '', notes: '' };
+                setTimeout(() => location.reload(), 800);
+            } catch (e) {
+                this.showToast('Error: ' + e.message, 'error');
+            } finally {
+                this.addLoading = false;
+            }
+        },
+
+        async submitEdit() {
+            if (this.editForm.target_price <= 0) {
+                this.showToast('Target price must be greater than 0.', 'error');
+                return;
+            }
+            this.editLoading = true;
+            try {
+                const res = await fetch('/api/products/' + this.editForm.id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        target_price: this.editForm.target_price,
+                        custom_title: this.editForm.custom_title,
+                        notes: this.editForm.notes,
+                        status: this.editForm.status
+                    })
+                });
+                if (!res.ok) throw new Error(await res.text());
+                // Update in-memory
+                const idx = this.products.findIndex(p => p.ID === this.editForm.id);
+                if (idx >= 0) {
+                    this.products[idx].TargetPrice = this.editForm.target_price;
+                    this.products[idx].CustomTitle = this.editForm.custom_title;
+                    this.products[idx].Notes = this.editForm.notes;
+                    this.products[idx].Status = this.editForm.status;
+                    this.products[idx].Active = this.editForm.status === 'active';
+                    if (this.editForm.custom_title) this.products[idx].Title = this.editForm.custom_title;
+                }
+                this.showToast('Product updated successfully!');
+                this.showEditModal = false;
+            } catch (e) {
+                this.showToast('Error: ' + e.message, 'error');
+            } finally {
+                this.editLoading = false;
+            }
+        },
+
+        async submitDelete() {
+            this.deleteLoading = true;
+            try {
+                const res = await fetch('/api/products/' + this.deleteTarget.id, { method: 'DELETE' });
+                if (!res.ok) throw new Error(await res.text());
+                this.products = this.products.filter(p => p.ID !== this.deleteTarget.id);
+                this.showToast('Product deleted.');
+                this.showDeleteModal = false;
+            } catch (e) {
+                this.showToast('Error: ' + e.message, 'error');
+            } finally {
+                this.deleteLoading = false;
+            }
+        },
+
+        async bulkPause() {
+            for (const id of [...this.selectedIDs]) {
+                const p = this.products.find(x => x.ID === id);
+                if (!p) continue;
+                await fetch('/api/products/' + id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target_price: p.TargetPrice, custom_title: p.CustomTitle, notes: p.Notes, status: 'paused' })
+                });
+                p.Status = 'paused'; p.Active = false;
+            }
+            this.selectedIDs = [];
+            this.showToast('Selected products paused.');
+        },
+
+        async submitBulkPrice() {
+            if (this.bulkPrice <= 0) { this.showToast('Enter a valid price.', 'error'); return; }
+            for (const id of [...this.selectedIDs]) {
+                const p = this.products.find(x => x.ID === id);
+                if (!p) continue;
+                await fetch('/api/products/' + id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target_price: this.bulkPrice, custom_title: p.CustomTitle, notes: p.Notes, status: p.Status })
+                });
+                p.TargetPrice = this.bulkPrice;
+            }
+            this.selectedIDs = [];
+            this.showBulkPriceModal = false;
+            this.showToast('Target price updated for selected products.');
+        },
+
+        async bulkDelete() {
+            if (!confirm('Delete ' + this.selectedIDs.length + ' selected product(s)? This cannot be undone.')) return;
+            for (const id of [...this.selectedIDs]) {
+                await fetch('/api/products/' + id, { method: 'DELETE' });
+                this.products = this.products.filter(p => p.ID !== id);
+            }
+            this.selectedIDs = [];
+            this.showToast('Selected products deleted.');
+        }
+    };
+}
+</script>
+
 {{template "footer" .}}
 {{end}}

@@ -11,11 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/robfig/cron/v3"
 	"pricewatcher/internal/db"
 	"pricewatcher/internal/feed"
 	"pricewatcher/internal/notify"
 	"pricewatcher/internal/runner"
 	"pricewatcher/internal/scraper"
+	"pricewatcher/internal/urlutil"
 )
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
@@ -363,6 +365,8 @@ func (s *Server) handleAddProduct(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		URL         string  `json:"url"`
 		TargetPrice float64 `json:"target_price"`
+		CustomTitle string  `json:"custom_title"`
+		Notes       string  `json:"notes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -374,7 +378,7 @@ func (s *Server) handleAddProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := s.db.UpsertProduct(body.URL, body.TargetPrice, "manual")
+	id, err := s.db.AddProduct(body.URL, body.TargetPrice, strings.TrimSpace(body.CustomTitle), strings.TrimSpace(body.Notes))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -386,6 +390,49 @@ func (s *Server) handleAddProduct(w http.ResponseWriter, r *http.Request) {
 		"id":           id,
 		"url":          body.URL,
 		"target_price": body.TargetPrice,
+		"custom_title": body.CustomTitle,
+		"notes":        body.Notes,
+	})
+}
+
+func (s *Server) handleUpdateProduct(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		TargetPrice float64 `json:"target_price"`
+		CustomTitle string  `json:"custom_title"`
+		Notes       string  `json:"notes"`
+		Status      string  `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if body.TargetPrice <= 0 {
+		http.Error(w, "invalid target price", http.StatusBadRequest)
+		return
+	}
+	if body.Status != "active" && body.Status != "paused" && body.Status != "removed" {
+		body.Status = "active"
+	}
+
+	if err := s.db.UpdateProduct(id, body.TargetPrice, strings.TrimSpace(body.CustomTitle), strings.TrimSpace(body.Notes), body.Status); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":           id,
+		"target_price": body.TargetPrice,
+		"custom_title": body.CustomTitle,
+		"notes":        body.Notes,
+		"status":       body.Status,
 	})
 }
 
@@ -473,16 +520,21 @@ func (s *Server) handleFeedSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	syncedCount := 0
+	var feedURLs []string
 	for _, item := range feedItems {
+		feedURLs = append(feedURLs, item.URL)
 		_, err := s.db.UpsertProduct(item.URL, item.Price, "feed")
 		if err == nil {
 			syncedCount++
 		}
 	}
 
+	removedCount, _ := s.db.MarkRemovedFeedProducts(feedURLs)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"synced": syncedCount,
+		"synced":  syncedCount,
+		"removed": removedCount,
 	})
 }
 
@@ -503,4 +555,112 @@ func safeSlice(s string, maxLen int) string {
 		return string(runes[:maxLen]) + "..."
 	}
 	return s
+}
+
+// handleSaveSettings applies live-capable settings to the in-memory config and
+// reschedules the cron job when the schedule changes. Settings that require a
+// container restart (WebPort, DBPath) are accepted but flagged in the response.
+func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		FeedURL          string `json:"feedURL"`
+		CronSchedule     string `json:"cronSchedule"`
+		BrowserEndpoint  string `json:"browserEndpoint"`
+		AppriseURL       string `json:"appriseURL"`
+		AlertCooldownHrs int    `json:"alertCooldown"`
+		WorkerCount      int    `json:"workerCount"`
+		HTTPTimeoutSec   int    `json:"httpTimeout"`
+		CDPTimeoutSec    int    `json:"cdpTimeout"`
+		WebPort          string `json:"webPort"`
+		DBPath           string `json:"dbPath"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Validate URL fields — only http:// and https:// are allowed to prevent SSRF.
+	for label, rawURL := range map[string]string{
+		"feedURL":         body.FeedURL,
+		"appriseURL":      body.AppriseURL,
+		"browserEndpoint": body.BrowserEndpoint,
+	} {
+		if rawURL == "" {
+			continue
+		}
+		if err := urlutil.ValidateHTTP(rawURL); err != nil {
+			http.Error(w, fmt.Sprintf("invalid URL for %s: %v", label, err), http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Validate cron schedule before applying anything.
+	cronParser := cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	if body.CronSchedule != "" {
+		if _, err := cronParser.Parse(body.CronSchedule); err != nil {
+			http.Error(w, fmt.Sprintf("invalid cron schedule: %v", err), http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Track which settings require a container restart.
+	var requiresRestart []string
+
+	// Apply live-capable settings.
+	if body.FeedURL != "" {
+		s.cfg.FeedURL = body.FeedURL
+	}
+	if body.AppriseURL != "" {
+		s.cfg.AppriseURL = body.AppriseURL
+	}
+	if body.BrowserEndpoint != "" {
+		s.cfg.CloakBrowserCDP = body.BrowserEndpoint
+	}
+	if body.AlertCooldownHrs > 0 {
+		s.cfg.AlertCooldownHrs = body.AlertCooldownHrs
+	}
+	if body.WorkerCount > 0 {
+		s.cfg.MaxHTTPConcurrent = body.WorkerCount
+	}
+	if body.HTTPTimeoutSec > 0 {
+		s.cfg.HTTPTimeout = time.Duration(body.HTTPTimeoutSec) * time.Second
+	}
+	if body.CDPTimeoutSec > 0 {
+		s.cfg.CDPTimeout = time.Duration(body.CDPTimeoutSec) * time.Second
+	}
+
+	// cronRunTimeout is the maximum time a single cron-triggered scrape run is allowed to take.
+	const cronRunTimeout = 45 * time.Minute
+
+	// Reschedule cron if the schedule changed.
+	if body.CronSchedule != "" && body.CronSchedule != s.cfg.CronSchedule {
+		s.cronMu.Lock()
+		s.cron.Remove(s.cronEntryID)
+		newID, err := s.cron.AddFunc(body.CronSchedule, func() {
+			ctx, cancel := context.WithTimeout(context.Background(), cronRunTimeout)
+			defer cancel()
+			_ = runner.RunOnce(ctx, s.db, s.cfg)
+		})
+		if err == nil {
+			s.cronEntryID = newID
+			s.cfg.CronSchedule = body.CronSchedule
+			slog.Info("cron schedule updated", "schedule", body.CronSchedule)
+		} else {
+			slog.Error("failed to reschedule cron", "error", err)
+		}
+		s.cronMu.Unlock()
+	}
+
+	// Settings that cannot be changed at runtime.
+	if body.WebPort != "" && body.WebPort != s.cfg.WebPort {
+		requiresRestart = append(requiresRestart, "webPort")
+	}
+	if body.DBPath != "" && body.DBPath != s.cfg.DBPath {
+		requiresRestart = append(requiresRestart, "dbPath")
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":             true,
+		"requireRestart": requiresRestart,
+	})
 }

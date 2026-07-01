@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,7 +23,10 @@ type Product struct {
 	URL         string    `json:"url"`
 	TargetPrice float64   `json:"target_price"`
 	Source      string    `json:"source"`
-	Active      bool      `json:"active"`
+	Status      string    `json:"status"`      // "active", "paused", "removed"
+	Active      bool      `json:"active"`      // true when status=="active"
+	CustomTitle string    `json:"custom_title"` // optional user-supplied title
+	Notes       string    `json:"notes"`        // optional user notes
 	CreatedAt   time.Time `json:"created_at"`
 }
 
@@ -149,10 +153,16 @@ func (d *DB) migrate() error {
 		`ALTER TABLE products ADD COLUMN target_price REAL NOT NULL DEFAULT 0;`,
 		`ALTER TABLE products ADD COLUMN source TEXT NOT NULL DEFAULT 'manual';`,
 		`ALTER TABLE products ADD COLUMN active INTEGER NOT NULL DEFAULT 1;`,
+		`ALTER TABLE products ADD COLUMN status TEXT NOT NULL DEFAULT 'active';`,
+		`ALTER TABLE products ADD COLUMN custom_title TEXT NOT NULL DEFAULT '';`,
+		`ALTER TABLE products ADD COLUMN notes TEXT NOT NULL DEFAULT '';`,
 	}
 	for _, q := range alterQueries {
 		_, _ = d.conn.Exec(q) // Ignore errors if columns already exist
 	}
+
+	// Backfill status from active flag for existing rows
+	_, _ = d.conn.Exec(`UPDATE products SET status = 'paused' WHERE active = 0 AND status = 'active'`)
 
 	return nil
 }
@@ -245,12 +255,12 @@ func (d *DB) UpsertProduct(url string, targetPrice float64, source string) (int6
 	defer d.mu.Unlock()
 
 	var id int64
-	var existingSource string
-	err := d.conn.QueryRow("SELECT id, source FROM products WHERE url = ?", url).Scan(&id, &existingSource)
+	var existingSource, existingStatus string
+	err := d.conn.QueryRow("SELECT id, source, status FROM products WHERE url = ?", url).Scan(&id, &existingSource, &existingStatus)
 	if err == sql.ErrNoRows {
 		res, err := d.conn.Exec(`
-			INSERT INTO products (url, target_price, source, active)
-			VALUES (?, ?, ?, 1)
+			INSERT INTO products (url, target_price, source, active, status)
+			VALUES (?, ?, ?, 1, 'active')
 		`, url, targetPrice, source)
 		if err != nil {
 			return 0, err
@@ -262,15 +272,27 @@ func (d *DB) UpsertProduct(url string, targetPrice float64, source string) (int6
 
 	if source == "feed" {
 		if existingSource == "feed" {
-			_, err = d.conn.Exec("UPDATE products SET target_price = ? WHERE id = ?", targetPrice, id)
+			// Re-activate if previously removed from feed, but respect manual pauses
+			newStatus := existingStatus
+			if existingStatus == "removed" {
+				newStatus = "active"
+			}
+			newActive := 0
+			if newStatus == "active" {
+				newActive = 1
+			}
+			_, err = d.conn.Exec(`
+				UPDATE products SET target_price = ?, status = ?, active = ?
+				WHERE id = ?`, targetPrice, newStatus, newActive, id)
 			if err != nil {
 				return 0, err
 			}
 		}
+		// If existingSource == "manual", feed sync never overwrites manual products
 	} else {
 		_, err = d.conn.Exec(`
 			UPDATE products
-			SET target_price = ?, source = ?, active = 1
+			SET target_price = ?, source = ?, active = 1, status = 'active'
 			WHERE id = ?
 		`, targetPrice, source, id)
 		if err != nil {
@@ -285,7 +307,7 @@ func (d *DB) GetProducts() ([]Product, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	rows, err := d.conn.Query("SELECT id, url, target_price, source, active, created_at FROM products ORDER BY created_at DESC")
+	rows, err := d.conn.Query("SELECT id, url, target_price, source, active, status, custom_title, notes, created_at FROM products ORDER BY created_at DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -295,10 +317,10 @@ func (d *DB) GetProducts() ([]Product, error) {
 	for rows.Next() {
 		var p Product
 		var activeInt int
-		if err := rows.Scan(&p.ID, &p.URL, &p.TargetPrice, &p.Source, &activeInt, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.URL, &p.TargetPrice, &p.Source, &activeInt, &p.Status, &p.CustomTitle, &p.Notes, &p.CreatedAt); err != nil {
 			return nil, err
 		}
-		p.Active = activeInt != 0
+		p.Active = p.Status == "active"
 		products = append(products, p)
 	}
 	return products, nil
@@ -308,7 +330,7 @@ func (d *DB) GetAllProducts() ([]Product, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	rows, err := d.conn.Query("SELECT id, url, target_price, source, active, created_at FROM products WHERE active = 1 ORDER BY created_at DESC")
+	rows, err := d.conn.Query("SELECT id, url, target_price, source, active, status, custom_title, notes, created_at FROM products WHERE status = 'active' ORDER BY created_at DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -318,10 +340,10 @@ func (d *DB) GetAllProducts() ([]Product, error) {
 	for rows.Next() {
 		var p Product
 		var activeInt int
-		if err := rows.Scan(&p.ID, &p.URL, &p.TargetPrice, &p.Source, &activeInt, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.URL, &p.TargetPrice, &p.Source, &activeInt, &p.Status, &p.CustomTitle, &p.Notes, &p.CreatedAt); err != nil {
 			return nil, err
 		}
-		p.Active = activeInt != 0
+		p.Active = p.Status == "active"
 		products = append(products, p)
 	}
 	return products, nil
@@ -358,21 +380,118 @@ func (d *DB) UpdateProductTarget(id int64, targetPrice float64) error {
 
 	_, err := d.conn.Exec(`
 		UPDATE products
-		SET target_price = ?, source = 'manual'
+		SET target_price = ?
 		WHERE id = ?
 	`, targetPrice, id)
 	return err
+}
+
+func (d *DB) UpdateProduct(id int64, targetPrice float64, customTitle, notes, status string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	activeInt := 1
+	if status != "active" {
+		activeInt = 0
+	}
+	_, err := d.conn.Exec(`
+		UPDATE products
+		SET target_price = ?, custom_title = ?, notes = ?, status = ?, active = ?
+		WHERE id = ?
+	`, targetPrice, customTitle, notes, status, activeInt, id)
+	return err
+}
+
+func (d *DB) AddProduct(url string, targetPrice float64, customTitle, notes string) (int64, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	// Check if product already exists
+	var existingID int64
+	err := d.conn.QueryRow("SELECT id FROM products WHERE url = ?", url).Scan(&existingID)
+	if err == sql.ErrNoRows {
+		// Brand-new product
+		res, err := d.conn.Exec(`
+			INSERT INTO products (url, target_price, source, active, status, custom_title, notes)
+			VALUES (?, ?, 'manual', 1, 'active', ?, ?)
+		`, url, targetPrice, customTitle, notes)
+		if err != nil {
+			return 0, err
+		}
+		return res.LastInsertId()
+	} else if err != nil {
+		return 0, err
+	}
+
+	// Product exists — update price/title/notes but preserve current status
+	_, err = d.conn.Exec(`
+		UPDATE products
+		SET target_price = ?, custom_title = ?, notes = ?, source = 'manual'
+		WHERE id = ?
+	`, targetPrice, customTitle, notes, existingID)
+	return existingID, err
+}
+
+func (d *DB) GetProductByID(id int64) (*Product, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	var p Product
+	var activeInt int
+	err := d.conn.QueryRow(`
+		SELECT id, url, target_price, source, active, status, custom_title, notes, created_at
+		FROM products WHERE id = ?`, id).Scan(
+		&p.ID, &p.URL, &p.TargetPrice, &p.Source, &activeInt, &p.Status, &p.CustomTitle, &p.Notes, &p.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	p.Active = p.Status == "active"
+	return &p, nil
+}
+
+// MarkRemovedFeedProducts soft-deletes feed products whose URLs are not in the given list.
+// Manual products are never touched.
+func (d *DB) MarkRemovedFeedProducts(presentURLs []string) (int, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if len(presentURLs) == 0 {
+		return 0, nil
+	}
+
+	// Build a single UPDATE with a NOT IN clause to avoid N round-trips.
+	placeholders := make([]string, len(presentURLs))
+	args := make([]interface{}, len(presentURLs))
+	for i, u := range presentURLs {
+		placeholders[i] = "?"
+		args[i] = u
+	}
+	query := fmt.Sprintf(
+		"UPDATE products SET status = 'removed', active = 0 WHERE source = 'feed' AND status != 'removed' AND url NOT IN (%s)",
+		strings.Join(placeholders, ","),
+	)
+	res, err := d.conn.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 func (d *DB) SetProductActive(id int64, active bool) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
+	status := "paused"
 	activeInt := 0
 	if active {
+		status = "active"
 		activeInt = 1
 	}
-	_, err := d.conn.Exec("UPDATE products SET active = ? WHERE id = ?", activeInt, id)
+	_, err := d.conn.Exec("UPDATE products SET active = ?, status = ? WHERE id = ?", activeInt, status, id)
 	return err
 }
 
@@ -422,15 +541,23 @@ func (d *DB) ToggleProductActive(id int64) (bool, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	var activeInt int
-	err := d.conn.QueryRow("SELECT active FROM products WHERE id = ?", id).Scan(&activeInt)
+	var currentStatus string
+	err := d.conn.QueryRow("SELECT status FROM products WHERE id = ?", id).Scan(&currentStatus)
 	if err != nil {
 		return false, err
 	}
 
-	newActive := 1 - activeInt
-	_, err = d.conn.Exec("UPDATE products SET active = ? WHERE id = ?", newActive, id)
-	return newActive != 0, err
+	var newStatus string
+	var newActive int
+	if currentStatus == "active" {
+		newStatus = "paused"
+		newActive = 0
+	} else {
+		newStatus = "active"
+		newActive = 1
+	}
+	_, err = d.conn.Exec("UPDATE products SET active = ?, status = ? WHERE id = ?", newActive, newStatus, id)
+	return newStatus == "active", err
 }
 
 func (d *DB) StartRun() (int64, error) {
