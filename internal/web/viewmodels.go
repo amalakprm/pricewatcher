@@ -120,9 +120,10 @@ type SettingsPage struct {
 
 // UIConfig represents the settings fields exposed in the configuration form.
 type UIConfig struct {
-	FeedURL         string
-	CronSchedule    string
-	BrowserEndpoint string
-	AlertCooldown   string // Apprise URL
-	WorkerCount     int
+	FeedURL          string
+	CronSchedule     string
+	BrowserEndpoint  string
+	AppriseURL       string // Apprise notification endpoint
+	AlertCooldownHrs int    // Alert cooldown in hours
+	WorkerCount      int
 }

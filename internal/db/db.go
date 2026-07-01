@@ -276,9 +276,13 @@ func (d *DB) UpsertProduct(url string, targetPrice float64, source string) (int6
 			if existingStatus == "removed" {
 				newStatus = "active"
 			}
+			newActive := 0
+			if newStatus == "active" {
+				newActive = 1
+			}
 			_, err = d.conn.Exec(`
-				UPDATE products SET target_price = ?, status = ?, active = (CASE WHEN ? = 'active' THEN 1 ELSE 0 END)
-				WHERE id = ?`, targetPrice, newStatus, newStatus, id)
+				UPDATE products SET target_price = ?, status = ?, active = ?
+				WHERE id = ?`, targetPrice, newStatus, newActive, id)
 			if err != nil {
 				return 0, err
 			}
@@ -401,20 +405,30 @@ func (d *DB) AddProduct(url string, targetPrice float64, customTitle, notes stri
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	res, err := d.conn.Exec(`
-		INSERT INTO products (url, target_price, source, active, status, custom_title, notes)
-		VALUES (?, ?, 'manual', 1, 'active', ?, ?)
-		ON CONFLICT(url) DO UPDATE SET
-			target_price = excluded.target_price,
-			custom_title = excluded.custom_title,
-			notes = excluded.notes,
-			status = 'active',
-			active = 1
-	`, url, targetPrice, customTitle, notes)
-	if err != nil {
+	// Check if product already exists
+	var existingID int64
+	err := d.conn.QueryRow("SELECT id FROM products WHERE url = ?", url).Scan(&existingID)
+	if err == sql.ErrNoRows {
+		// Brand-new product
+		res, err := d.conn.Exec(`
+			INSERT INTO products (url, target_price, source, active, status, custom_title, notes)
+			VALUES (?, ?, 'manual', 1, 'active', ?, ?)
+		`, url, targetPrice, customTitle, notes)
+		if err != nil {
+			return 0, err
+		}
+		return res.LastInsertId()
+	} else if err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+
+	// Product exists — update price/title/notes but preserve current status
+	_, err = d.conn.Exec(`
+		UPDATE products
+		SET target_price = ?, custom_title = ?, notes = ?, source = 'manual'
+		WHERE id = ?
+	`, targetPrice, customTitle, notes, existingID)
+	return existingID, err
 }
 
 func (d *DB) GetProductByID(id int64) (*Product, error) {

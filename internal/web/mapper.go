@@ -227,11 +227,12 @@ func BuildSettingsPage(cfg *config.Config, srvDb *db.DB, scheduler *cron.Cron, r
 	base := BuildBasePage("Settings", "settings", srvDb, cfg, scheduler, running)
 
 	uiConfig := UIConfig{
-		FeedURL:         cfg.FeedURL,
-		CronSchedule:    cfg.CronSchedule,
-		BrowserEndpoint: cfg.CloakBrowserCDP,
-		AlertCooldown:   cfg.AppriseURL,
-		WorkerCount:     cfg.MaxHTTPConcurrent,
+		FeedURL:          cfg.FeedURL,
+		CronSchedule:     cfg.CronSchedule,
+		BrowserEndpoint:  cfg.CloakBrowserCDP,
+		AppriseURL:       cfg.AppriseURL,
+		AlertCooldownHrs: cfg.AlertCooldownHrs,
+		WorkerCount:      cfg.MaxHTTPConcurrent,
 	}
 
 	return SettingsPage{

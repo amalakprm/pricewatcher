@@ -250,13 +250,13 @@ function settingsApp() {
             feedURL: {{printf "%q" .Config.FeedURL}},
             cronSchedule: {{printf "%q" .Config.CronSchedule}},
             cdpEndpoint: {{printf "%q" .Config.BrowserEndpoint}},
-            appriseURL: {{printf "%q" .Config.AlertCooldown}},
+            appriseURL: {{printf "%q" .Config.AppriseURL}},
             workerCount: {{.Config.WorkerCount}},
             httpTimeout: 15,
             cdpTimeout: 30,
             webPort: ':8420',
             dbPath: '/app/data/pricewatcher.db',
-            alertCooldown: 20
+            alertCooldown: {{.Config.AlertCooldownHrs}}
         },
         schedule: { mode: 'daily_times', times: ['03:30', '12:00'], everyN: 4, showRaw: false },
 
