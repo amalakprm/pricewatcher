@@ -615,7 +615,7 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	if body.BrowserEndpoint != "" {
 		s.cfg.CloakBrowserCDP = body.BrowserEndpoint
 	}
-	if body.AlertCooldownHrs > 0 {
+	if body.AlertCooldownHrs >= 0 {
 		s.cfg.AlertCooldownHrs = body.AlertCooldownHrs
 	}
 	if body.WorkerCount > 0 {
